@@ -26,10 +26,29 @@ class EntryPointTests(unittest.TestCase):
         self.assertEqual(result["stage"], "entrypoint")
         self.assertIn("platform", result)
 
+    def test_network_guard_preserves_windows_socket_capabilities(self):
+        class WindowsSocket:
+            pass
+        guarded = app.offline_socket_type(WindowsSocket)
+        self.assertFalse(hasattr(guarded, "sendmsg"))
+        self.assertFalse(hasattr(guarded, "sendmsg_afalg"))
+        with self.assertRaises(OSError):
+            guarded().connect(("127.0.0.1", 9))
+
+    def test_existing_posix_sendmsg_is_blocked(self):
+        class PosixSocket:
+            def sendmsg(self, *args):
+                raise AssertionError("Original network method must not run")
+        guarded = app.offline_socket_type(PosixSocket)
+        self.assertTrue(hasattr(guarded, "sendmsg"))
+        with self.assertRaises(OSError):
+            guarded().sendmsg([b"test"])
+
     def test_network_guard_blocks_connections_and_server(self):
         script = '''
 import app, socket
 app.disable_network()
+import asyncio  # On Windows this must not select POSIX os.sysconf paths.
 for call in [lambda: socket.create_connection(("127.0.0.1", 9)), lambda: socket.getaddrinfo("example.com", 443), lambda: socket.socket().connect(("127.0.0.1", 9)), lambda: socket.socket().bind(("127.0.0.1", 0))]:
     try: call()
     except OSError: pass

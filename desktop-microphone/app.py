@@ -19,18 +19,28 @@ def diagnostic_error(error):
             "stage": DIAGNOSTIC_STAGE, "traceback": traceback.format_exc(),
             "platform": sys.platform, "os_name": os.name, "frozen": bool(getattr(sys, "frozen", False))}
 
-def disable_network():
-    """Defense in depth, in this process only; no Windows settings are changed."""
+def offline_socket_type(base_socket):
+    """Keep OS capability detection intact while rejecting network operations."""
     def denied(*args, **kwargs):
         raise OSError("Сетевые операции отключены в этом приложении.")
-    class OfflineSocket(socket.socket):
+    class OfflineSocket(base_socket):
         connect = denied
         connect_ex = denied
         bind = denied
         listen = denied
         sendto = denied
-        sendmsg = denied
-    socket.socket = OfflineSocket
+    # CPython asyncio detects sendmsg to select POSIX os.sysconf code. Never
+    # invent this Unix-only socket capability on Windows.
+    if hasattr(base_socket, "sendmsg"):
+        OfflineSocket.sendmsg = denied
+    return OfflineSocket
+
+
+def disable_network():
+    """Defense in depth, in this process only; no Windows settings are changed."""
+    def denied(*args, **kwargs):
+        raise OSError("Сетевые операции отключены в этом приложении.")
+    socket.socket = offline_socket_type(socket.socket)
     socket.create_connection = denied
     socket.getaddrinfo = denied
     os.environ.update(HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1", HF_HUB_DISABLE_TELEMETRY="1")
