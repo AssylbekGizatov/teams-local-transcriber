@@ -1,0 +1,15 @@
+# Add ONLY after the pinned Vexa deployment has created teams-asr-vexa.
+# docker compose -f compose.yaml -f deploy/compose.teams.yaml --profile cpu up -d
+services:
+  platform:
+    networks:
+      vexa:
+        aliases: [asr-app]
+  platform-gpu:
+    networks:
+      vexa:
+        aliases: [asr-app]
+networks:
+  vexa:
+    external: true
+    name: teams-asr-vexa

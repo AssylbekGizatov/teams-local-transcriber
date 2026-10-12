@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#183f35" />
+    <title>Сөз · Транскрипции встреч</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='12' fill='%23183f35'/%3E%3Cpath d='M11 17v6m6-12v18m6-15v12m6-9v6' stroke='%23ddf4b3' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/static/styles.css" />
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#workspace">Перейти к рабочей области</a>
+    <aside class="sidebar" aria-label="Главная навигация">
+      <a class="brand" href="/" aria-label="Сөз, главная"
+        ><span class="brand-mark" aria-hidden="true"
+          ><i></i><i></i><i></i><i></i></span
+        ><span>сөз<span class="brand-dot">.</span></span></a
+      >
+      <p class="sidebar-caption">ПРОСТРАНСТВО ДЛЯ СЛОВ</p>
+      <nav>
+        <a class="nav-item active" href="#workspace"
+          ><svg viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="3" y="3" width="7" height="7" rx="1.5" />
+            <rect x="14" y="3" width="7" height="7" rx="1.5" />
+            <rect x="3" y="14" width="7" height="7" rx="1.5" />
+            <rect x="14" y="14" width="7" height="7" rx="1.5" /></svg
+          >Обзор<span class="nav-dot"></span
+        ></a>
+        <a class="nav-item" href="#history"
+          ><svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 12a9 9 0 1 0 2.6-6.4M3 3v5h5M12 7v5l3 2" /></svg
+          >История встреч<span id="nav-count" class="nav-count">0</span></a
+        >
+      </nav>
+      <div class="sidebar-note">
+        <span class="tiny-wave" aria-hidden="true">ııııııı</span>
+        <h2>Слушайте внимательно.<br />Текст оставьте нам.</h2>
+        <p>Разговоры на казахском, русском и английском в одном месте.</p>
+        <div class="language-chips">
+          <span>KK</span><span>RU</span><span>EN</span>
+        </div>
+      </div>
+      <div class="sidebar-bottom">
+        <span id="backend-dot" class="connection-dot"></span>
+        <div>
+          <strong id="backend-title">Ожидаем подключение</strong
+          ><span id="backend-subtitle">Защищённое рабочее пространство</span>
+        </div>
+      </div>
+    </aside>
+
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="breadcrumb">
+          Рабочее пространство <span>/</span> <strong>Транскрипции</strong>
+        </div>
+        <div class="topbar-actions">
+          <button
+            id="refresh"
+            class="icon-button"
+            title="Обновить встречи"
+            aria-label="Обновить встречи"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M20 7v5h-5M4 17v-5h5M6.1 6.1A8 8 0 0 1 20 12M4 12a8 8 0 0 0 13.9 5.9"
+              />
+            </svg></button
+          ><button id="access-button" class="access-button">
+            <span class="avatar">A</span
+            ><span id="access-label">Подключиться</span
+            ><svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m9 5 7 7-7 7" />
+            </svg>
+          </button>
+        </div>
+      </header>
+      <main id="workspace" tabindex="-1">
+        <section class="hero" aria-labelledby="page-title">
+          <div>
+            <div class="eyebrow">
+              <span></span> МЕНЬШЕ ЗАМЕТОК. БОЛЬШЕ СМЫСЛА.
+            </div>
+            <h1 id="page-title">
+              Разговор становится<br /><span>текстом.</span>
+            </h1>
+            <p>Запишите важное. Найдите нужное. Вернитесь к деталям.</p>
+          </div>
+          <div class="hero-graphic" aria-hidden="true">
+            <div class="orbit orbit-one"></div>
+            <div class="orbit orbit-two"></div>
+            <div class="sound-card">
+              <div class="sound-top">
+                <span class="mini-mark">сөз.</span
+                ><span class="mini-dots">•••</span>
+              </div>
+              <div class="sound-wave">
+                <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i
+                ><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i
+                ><i></i><i></i>
+              </div>
+              <div class="sound-lines">
+                <span></span><span></span><span></span>
+              </div>
+            </div>
+            <span class="graphic-language graphic-kk">Сәлем!</span
+            ><span class="graphic-language graphic-en">Hello.</span>
+          </div>
+        </section>
+
+        <div
+          id="global-error"
+          class="notice error-notice"
+          hidden
+          role="alert"
+        ></div>
+        <section class="workspace-grid" aria-label="Работа с транскрипциями">
+          <div class="left-column">
+            <section
+              id="new-meeting"
+              class="panel composer"
+              aria-labelledby="new-heading"
+            >
+              <div class="panel-heading">
+                <div>
+                  <span class="section-kicker">НАЧНИТЕ ЗДЕСЬ</span>
+                  <h2 id="new-heading">Новая транскрипция</h2>
+                </div>
+                <span class="step-number">01</span>
+              </div>
+              <div
+                class="source-tabs"
+                role="tablist"
+                aria-label="Источник записи"
+              >
+                <button
+                  id="upload-tab"
+                  class="source-tab selected"
+                  role="tab"
+                  aria-selected="true"
+                  aria-controls="upload-fields"
+                  tabindex="0"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M12 16V3m-5 5 5-5 5 5M4 15v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5"
+                    /></svg
+                  >Загрузить запись</button
+                ><button
+                  id="teams-tab"
+                  class="source-tab"
+                  role="tab"
+                  aria-selected="false"
+                  aria-controls="teams-fields"
+                  tabindex="-1"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <rect x="2" y="8" width="12" height="12" rx="2" />
+                    <path
+                      d="M6 12h4M8 12v5M16 10h4v7a3 3 0 0 1-4 2M17 4a2 2 0 1 0 0 .1M8 3a2 2 0 1 0 0 .1"
+                    /></svg
+                  >Microsoft Teams<span class="beta-tag">BETA</span>
+                </button>
+              </div>
+              <form id="create-form">
+                <div
+                  id="upload-fields"
+                  role="tabpanel"
+                  aria-labelledby="upload-tab"
+                >
+                  <label id="dropzone" class="dropzone" for="recording-file"
+                    ><input
+                      id="recording-file"
+                      name="file"
+                      type="file"
+                      accept="audio/*,video/*,.m4a,.mp3,.mp4,.wav,.webm,.ogg,.flac,.aac,.opus"
+                      aria-describedby="file-hint"
+                    /><span class="upload-icon"
+                      ><svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                          d="M12 16V6m-4 4 4-4 4 4M5 15v5h14v-5"
+                        /></svg></span
+                    ><strong id="file-label">Перетащите запись сюда</strong
+                    ><span id="file-hint"
+                      >или <em>выберите файл</em> на компьютере</span
+                    ><small
+                      >Аудио или видео · MP3, WAV, M4A, MP4 и другие</small
+                    ></label
+                  >
+                </div>
+                <div
+                  id="teams-fields"
+                  role="tabpanel"
+                  aria-labelledby="teams-tab"
+                  hidden
+                >
+                  <div class="notice teams-notice">
+                    <strong>Экспериментальное подключение</strong>
+                    <p id="teams-availability">Проверяем доступность Teams…</p>
+                    <p>
+                      Бот должен быть допущен организатором. Запись разрешена
+                      только с согласия участников и в рамках правил вашей
+                      организации.
+                    </p>
+                  </div>
+                  <label for="meeting-url">Ссылка на встречу</label
+                  ><input
+                    id="meeting-url"
+                    type="url"
+                    placeholder="https://teams.microsoft.com/…"
+                    autocomplete="off"
+                    maxlength="2048"
+                  />
+                  <p class="field-hint">
+                    Прямая ссылка приглашения Microsoft Teams
+                  </p>
+                </div>
+                <label for="meeting-title"
+                  >Название <span class="optional">необязательно</span></label
+                ><input
+                  id="meeting-title"
+                  type="text"
+                  placeholder="Например, обсуждение проекта"
+                  maxlength="200"
+                  autocomplete="off"
+                />
+                <label for="meeting-language">Язык разговора</label
+                ><select id="meeting-language">
+                  <option value="auto">Определить автоматически</option>
+                  <option value="kk">Қазақша</option>
+                  <option value="ru">Русский</option>
+                  <option value="en">English</option>
+                </select>
+                <p class="field-hint">
+                  Качество зависит от записи и настроенной ASR-модели.
+                </p>
+                <label class="consent-check"
+                  ><input id="consent" type="checkbox" required /><span
+                    >У меня есть разрешение на запись и обработку разговора, а
+                    участники уведомлены и согласны.</span
+                  ></label
+                >
+                <div
+                  id="form-error"
+                  class="form-error"
+                  role="alert"
+                  hidden
+                ></div>
+                <button id="start-button" class="primary-button" type="submit">
+                  <span id="start-label">Создать транскрипцию</span
+                  ><svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 12h16m-6-6 6 6-6 6" />
+                  </svg>
+                </button>
+                <p id="model-warning" class="model-warning" hidden></p>
+              </form>
+            </section>
+
+            <section
+              id="history"
+              class="panel history-panel"
+              aria-labelledby="history-heading"
+            >
+              <div class="panel-heading">
+                <div>
+                  <span class="section-kicker">ВАШИ РАЗГОВОРЫ</span>
+                  <h2 id="history-heading">
+                    История встреч
+                    <span id="history-count" class="count-badge">0</span>
+                  </h2>
+                </div>
+              </div>
+              <label class="search-field"
+                ><svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="10.5" cy="10.5" r="6.5" />
+                  <path d="m16 16 5 5" /></svg
+                ><input
+                  id="history-search"
+                  type="search"
+                  aria-label="Поиск встречи по названию"
+                  placeholder="Найти встречу…"
+              /></label>
+              <div id="history-list" class="history-list" aria-live="polite">
+                <div class="history-empty">
+                  <p>Пока ни одной встречи</p>
+                  <span>Добавьте первую запись выше</span>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <section
+            class="panel transcript-panel"
+            aria-labelledby="transcript-heading"
+          >
+            <div class="transcript-top">
+              <div>
+                <span class="section-kicker">ДЕТАЛИ РАЗГОВОРА</span>
+                <h2 id="transcript-heading">Транскрипция</h2>
+              </div>
+              <label class="auto-refresh"
+                ><input type="checkbox" id="auto-refresh" checked /><span
+                  >Автообновление</span
+                ></label
+              >
+            </div>
+            <div id="transcript-empty" class="transcript-empty">
+              <div class="empty-illustration" aria-hidden="true">
+                <div class="empty-sheet">
+                  <span></span><span></span><span></span><span></span
+                  ><span></span>
+                </div>
+                <span class="empty-bubble"
+                  ><i></i><i></i><i></i><i></i><i></i></span
+                ><span class="empty-spark">✳</span>
+              </div>
+              <span class="empty-kicker">ПЕРВОЕ СЛОВО ЗА ВАМИ</span>
+              <h3>Здесь появится ваш разговор</h3>
+              <p>
+                Загрузите запись или подключитесь к встрече.<br />Мы превратим
+                речь в текст, с которым удобно работать.
+              </p>
+              <div class="empty-features">
+                <span
+                  ><svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="12" cy="12" r="8" />
+                    <path d="M12 7v5l3 2" /></svg
+                  >Временные метки</span
+                ><span
+                  ><svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m4 16 11-11 4 4L8 20H4v-4ZM13 7l4 4" /></svg
+                  >Редактирование</span
+                ><span
+                  ><svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 3v12m-4-4 4 4 4-4M4 16v5h16v-5" /></svg
+                  >4 формата экспорта</span
+                >
+              </div>
+            </div>
+            <div id="transcript-content" hidden>
+              <div class="meeting-summary">
+                <div class="meeting-title-row">
+                  <h3 id="selected-title"></h3>
+                  <span id="selected-status" class="status-pill"></span>
+                </div>
+                <div id="selected-meta" class="meeting-meta"></div>
+                <div
+                  id="meeting-status-note"
+                  class="notice status-notice"
+                  hidden
+                ></div>
+                <div
+                  id="meeting-error"
+                  class="notice error-notice"
+                  hidden
+                ></div>
+                <div class="meeting-actions">
+                  <button id="stop-button" class="button danger-button" hidden>
+                    Остановить</button
+                  ><button id="retry-button" class="button" hidden>
+                    Повторить обработку</button
+                  ><span id="last-updated" class="last-updated"></span>
+                </div>
+              </div>
+              <div class="transcript-toolbar">
+                <div class="toolbar-label">
+                  <span id="segment-count">0 фрагментов</span
+                  ><span id="duration"></span>
+                </div>
+                <div class="export-controls">
+                  <button
+                    id="copy-button"
+                    class="button compact-button"
+                    title="Скопировать текст"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <rect x="8" y="8" width="12" height="13" rx="2" />
+                      <path d="M16 8V3H3v13h5" /></svg
+                    ><span>Копировать</span></button
+                  ><label class="sr-only" for="export-format"
+                    >Формат экспорта</label
+                  ><select id="export-format">
+                    <option value="txt">TXT</option>
+                    <option value="md">MD</option>
+                    <option value="docx">DOCX</option>
+                    <option value="pdf">PDF</option></select
+                  ><button
+                    id="export-button"
+                    class="button export-button"
+                    title="Скачать транскрипцию"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M12 3v12m-4-4 4 4 4-4M4 16v5h16v-5" /></svg
+                    ><span>Скачать</span>
+                  </button>
+                </div>
+              </div>
+              <div class="accuracy-note">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 11v6M12 7v1" />
+                </svg>
+                <p>
+                  Распознавание может ошибаться. Проверьте важные детали. Метки
+                  спикеров не подтверждают личность участников.
+                </p>
+              </div>
+              <div id="segments" class="segments"></div>
+            </div>
+            <div class="transcript-footer">
+              <span
+                ><svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="5" y="10" width="14" height="11" rx="2" />
+                  <path d="M8 10V6a4 4 0 0 1 8 0v4" /></svg
+                >Доступ по токену администратора</span
+              ><span>Слова остаются с вами</span>
+            </div>
+          </section>
+        </section>
+        <footer class="page-footer">
+          <span>сөз. <span>Больше внимания разговору.</span></span
+          ><span>Қазақша · Русский · English</span>
+        </footer>
+      </main>
+    </div>
+
+    <dialog id="access-dialog" aria-labelledby="access-heading">
+      <form id="access-form">
+        <div class="dialog-top">
+          <span class="brand-mark" aria-hidden="true"
+            ><i></i><i></i><i></i><i></i></span
+          ><button
+            type="button"
+            id="close-access"
+            class="icon-button"
+            aria-label="Закрыть"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m6 6 12 12M6 18 18 6" />
+            </svg>
+          </button>
+        </div>
+        <span class="section-kicker">ВАШЕ РАБОЧЕЕ ПРОСТРАНСТВО</span>
+        <h2 id="access-heading">Подключимся?</h2>
+        <p>
+          Введите токен администратора, настроенный на сервере. Он хранится
+          только в текущей сессии браузера и передаётся в заголовке авторизации.
+        </p>
+        <label for="admin-token">Токен доступа</label
+        ><input
+          id="admin-token"
+          type="password"
+          autocomplete="off"
+          spellcheck="false"
+          required
+          placeholder="Введите токен"
+          maxlength="4096"
+        />
+        <p class="field-hint">Используйте HTTPS для безопасного подключения.</p>
+        <div id="access-error" class="form-error" role="alert" hidden></div>
+        <button class="primary-button" id="connect-button" type="submit">
+          Подключиться <span aria-hidden="true">→</span></button
+        ><button type="button" id="logout-button" class="text-button" hidden>
+          Выйти и удалить токен из сессии
+        </button>
+      </form>
+    </dialog>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  </body>
+</html>

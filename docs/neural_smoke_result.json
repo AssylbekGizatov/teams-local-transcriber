@@ -1,0 +1,26 @@
+{
+  "status": "passed",
+  "backend": "GigaAM Multilingual220M CTC",
+  "sample_duration": 11.29,
+  "duration_seconds": 8.725,
+  "segments": 1,
+  "expected_transcript_exact_match": true,
+  "source_deleted": true,
+  "temporary_pcm_cleaned": true,
+  "durable_db_reopen_match": true,
+  "exports_bytes": {
+    "txt": 929,
+    "md": 1015,
+    "docx": 37448,
+    "pdf": 26686
+  },
+  "exports_text_verified": [
+    "txt",
+    "md",
+    "docx",
+    "pdf"
+  ],
+  "v1_duration": 11.29,
+  "model_revision": "2f8a57144e6ec3adfd32fe0484d9ea9913305bc8",
+  "sample_url": "https://cdn.chatwm.opensmodel.sberdevices.ru/GigaAM/example.wav"
+}

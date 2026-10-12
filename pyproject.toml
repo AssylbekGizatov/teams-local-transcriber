@@ -1,0 +1,32 @@
+[project]
+name = "teams-asr-platform"
+version = "0.1.0"
+description = "Self-hosted Kazakh, Russian and English meeting transcription with an experimental Teams connector"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "fastapi==0.141.1",
+  "uvicorn==0.52.1",
+  "httpx==0.28.1",
+  "pydantic-settings==2.15.0",
+  "python-multipart==0.0.32",
+  "python-docx==1.2.0",
+  "reportlab==4.4.9",
+]
+
+[dependency-groups]
+dev = ["pytest==8.4.2", "pytest-asyncio==1.2.0", "ruff==0.14.0", "pypdf==6.1.1"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]
+
+[tool.uv]
+package = false

@@ -1,0 +1,378 @@
+diff --git a/core/meetings/contracts/invocation.v1/invocation.schema.json b/core/meetings/contracts/invocation.v1/invocation.schema.json
+index 1a19b5b..4169fc5 100644
+--- a/core/meetings/contracts/invocation.v1/invocation.schema.json
++++ b/core/meetings/contracts/invocation.v1/invocation.schema.json
+@@ -9,6 +9,7 @@
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
++        "maxBotTime": { "type": "integer", "minimum": 1000, "maximum": 14400000 },
+         "waitingRoomTimeout": { "type": "integer", "default": 300000 },
+         "noOneJoinedTimeout": { "type": "integer", "default": 600000 },
+         "everyoneLeftTimeout": { "type": "integer", "default": 120000 }
+diff --git a/core/meetings/modules/join/src/browser-args.ts b/core/meetings/modules/join/src/browser-args.ts
+index 82ec846..4b834dc 100644
+--- a/core/meetings/modules/join/src/browser-args.ts
++++ b/core/meetings/modules/join/src/browser-args.ts
+@@ -48,7 +48,6 @@ export const JOIN_BROWSER_ARGS: readonly string[] = [
+   "--incognito",
+   "--no-sandbox",
+   "--disable-setuid-sandbox",
+-  "--disable-features=IsolateOrigins,site-per-process",
+   "--disable-infobars",
+   "--disable-gpu",
+   // Collapse Chromium's gpu-process work into the renderer — no separate
+@@ -65,9 +64,7 @@ export const JOIN_BROWSER_ARGS: readonly string[] = [
+   // via createMediaStreamSource; without this the worklet never fires and no PCM flows. (L4.)
+   "--autoplay-policy=no-user-gesture-required",
+   "--use-file-for-fake-video-capture=/dev/null",
+-  "--disable-blink-features=AutomationControlled",
+   "--disable-features=VizDisplayCompositor",
+-  "--disable-site-isolation-trials",
+ ];
+ 
+ /** The canonical join launch args, as a fresh mutable array per call. Includes
+diff --git a/core/meetings/modules/mixed-pipeline/src/chunked-transcriber.ts b/core/meetings/modules/mixed-pipeline/src/chunked-transcriber.ts
+index 737438f..d31dafb 100644
+--- a/core/meetings/modules/mixed-pipeline/src/chunked-transcriber.ts
++++ b/core/meetings/modules/mixed-pipeline/src/chunked-transcriber.ts
+@@ -427,7 +427,7 @@ export class ChunkedTranscriber {
+   private lastPublishedSpeaker: { name: string; endMs: number } | null = null;
+ 
+   private constructor(private readonly cb: ChunkedTranscriberCallbacks) {
+-    this.log = cb.log || (() => { /* silent */ });
++    this.log = (_message: string) => { /* Local ASR fork: no participant/text diagnostic log. */ };
+     this.mode = cb.turnSource ?? 'pyannote';
+     this.graceMs = cb.turnSourceGraceMs ?? TURN_SOURCE_GRACE_MS;
+     if (cb.clock) this.now = () => cb.clock!.now();
+@@ -451,7 +451,7 @@ export class ChunkedTranscriber {
+     // cleared), repaint that key's pending + published segments live.
+     t.binder.onLateResolve = (clusterId, name) => t.onClusterRename(clusterId, name);
+     transformersEnv.allowLocalModels = true;
+-    transformersEnv.allowRemoteModels = true; // first run downloads from HF; cached after
++    transformersEnv.allowRemoteModels = false; // Local ASR fork: build-time cache only.
+     // Offline bake: point the HF cache at the model dir baked into the image
+     // (Dockerfile warms /opt/hf-cache at build time) so the segmenter loads
+     // pyannote from disk at runtime — no live-meeting HF download stall.
+@@ -1082,7 +1082,7 @@ export class ChunkedTranscriber {
+       const rule = hallucinationRule(s.text);
+       if (rule) {
+         this.cb.onSuppressed?.({ text: s.text, startMs: s.startMs, endMs: s.endMs, rule });
+-        this.log(`[ChunkedTranscriber] suppressed (${rule}) ${Math.round(s.startMs)}..${Math.round(s.endMs)}: ${JSON.stringify(s.text)}`);
++        this.log(`[ChunkedTranscriber] suppressed (${rule}) ${Math.round(s.startMs)}..${Math.round(s.endMs)}: [text omitted]`);
+         this.suppressedCount++;
+         return false;
+       }
+diff --git a/core/meetings/modules/mixed-pipeline/src/pyannote-segmenter.ts b/core/meetings/modules/mixed-pipeline/src/pyannote-segmenter.ts
+index 68cea69..9c7db55 100644
+--- a/core/meetings/modules/mixed-pipeline/src/pyannote-segmenter.ts
++++ b/core/meetings/modules/mixed-pipeline/src/pyannote-segmenter.ts
+@@ -166,8 +166,8 @@ export class PyannoteSegmenter {
+ 
+   static async create(cfg: PyannoteSegmenterConfig = {}): Promise<PyannoteSegmenter> {
+     const inst = new PyannoteSegmenter(cfg);
+-    inst.model = await AutoModel.from_pretrained(PYANNOTE_MODEL_ID, { device: 'cpu' });
+-    inst.processor = await AutoProcessor.from_pretrained(PYANNOTE_MODEL_ID);
++    inst.model = await AutoModel.from_pretrained(PYANNOTE_MODEL_ID, { device: 'cpu', dtype: 'fp32', revision: '733a93b6473d019a773298e08cefa686894b1854' });
++    inst.processor = await AutoProcessor.from_pretrained(PYANNOTE_MODEL_ID, { revision: '733a93b6473d019a773298e08cefa686894b1854' });
+     return inst;
+   }
+ 
+diff --git a/core/meetings/modules/mixed-pipeline/src/track-namer.ts b/core/meetings/modules/mixed-pipeline/src/track-namer.ts
+index 42a78b7..e86b186 100644
+--- a/core/meetings/modules/mixed-pipeline/src/track-namer.ts
++++ b/core/meetings/modules/mixed-pipeline/src/track-namer.ts
+@@ -357,7 +357,7 @@ export class TrackNamer {
+     this.selfStem = this.selfName.split(' ')[0] ?? '';
+     this.onNamed = opts.onNamed;
+     this.onObservation = opts.onObservation;
+-    this.log = opts.log ?? (() => { /* silent */ });
++    this.log = (_message: string) => { /* Local ASR fork: no participant/text diagnostic log. */ };
+   }
+ 
+   // ── inputs ────────────────────────────────────────────────────────────────────────────────────
+diff --git a/core/meetings/modules/remote-browser/src/args.ts b/core/meetings/modules/remote-browser/src/args.ts
+index 3004dfa..1e080bb 100644
+--- a/core/meetings/modules/remote-browser/src/args.ts
++++ b/core/meetings/modules/remote-browser/src/args.ts
+@@ -31,11 +31,8 @@ export function getAuthenticatedBrowserArgs(): string[] {
+   return [
+     '--no-sandbox',
+     '--disable-setuid-sandbox',
+-    '--disable-blink-features=AutomationControlled',
+     '--disable-infobars',
+     '--disable-gpu',
+-    '--disable-features=IsolateOrigins,site-per-process',
+-    '--disable-site-isolation-trials',
+     '--in-process-gpu',
+     '--use-fake-ui-for-media-stream',
+     '--use-file-for-fake-video-capture=/dev/null',
+@@ -52,7 +49,6 @@ export function getBrowserSessionArgs(): string[] {
+   return [
+     '--no-sandbox',
+     '--disable-setuid-sandbox',
+-    '--disable-blink-features=AutomationControlled',
+     '--use-fake-ui-for-media-stream',
+     '--start-maximized',
+     '--window-size=1920,1080',
+diff --git a/core/meetings/modules/remote-browser/src/browser.ts b/core/meetings/modules/remote-browser/src/browser.ts
+index 545ca1d..663193c 100644
+--- a/core/meetings/modules/remote-browser/src/browser.ts
++++ b/core/meetings/modules/remote-browser/src/browser.ts
+@@ -6,18 +6,11 @@
+  * Carved from the two byte-identical call sites in vexa-bot (browser-session.ts and
+  * the index.ts authenticated branch) — same options, single source of truth.
+  */
+-import { chromium } from 'playwright-extra';
+-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
++import { chromium } from 'playwright';
+ import type { BrowserContext, Page } from 'playwright';
+ import { BROWSER_DATA_DIR } from './session-store';
+ 
+-// Anti-detection: register the stealth evasions ONCE at module load — playwright-extra's `chromium`
+-// then applies them to every launchPersistentContext below. The two launch flags we already set
+-// (--disable-blink-features=AutomationControlled + stripping --enable-automation) only mask
+-// navigator.webdriver; the stealth plugin patches the rest of the fingerprint surface Google Meet's
+-// anti-abuse reads to bucket a bot into "With potential risks" — navigator.plugins/languages,
+-// WebGL vendor/renderer, chrome.runtime, permissions, iframe.contentWindow, and more.
+-chromium.use(StealthPlugin());
++// Local ASR fork: ordinary Playwright, no stealth or fingerprint spoofing.
+ 
+ export interface LaunchPersistentOptions {
+   /** Chromium profile dir — the durable session lives here. Defaults to BROWSER_DATA_DIR. */
+@@ -39,48 +32,10 @@ export async function launchPersistentBrowser(
+   const locale = opts.locale ?? ((process.env.BOT_UI_LOCALE || '').trim() || 'en-US');
+   const context = await chromium.launchPersistentContext(dataDir, {
+     headless: opts.headless ?? false,
+-    ignoreDefaultArgs: ['--enable-automation'],
+     args: opts.args,
+     viewport: null,
+     locale,
+   });
+-  // Anti-detection the stealth plugin misses under playwright-extra. Measured live (with stealth
+-  // active) that the bot's browser still leaks the tells below; patch them on every frame/navigation.
+-  await context.addInitScript(() => {
+-    const g: any = globalThis;
+-    // WebGL: the container has NO GPU, so ANGLE falls back to SwiftShader — a strong "server/VM/bot"
+-    // signal Google Meet's anti-abuse reads (and the reason toggling hardware-acceleration can't help:
+-    // there is no device to accelerate onto). Report a plausible real Intel/Mesa GPU consistent with
+-    // the Linux UA for the UNMASKED vendor (37445) / renderer (37446) parameters. Covers WebGL1+2.
+-    const spoof: Record<number, string> = {
+-      37445: 'Google Inc. (Intel)',
+-      37446: 'ANGLE (Intel, Mesa Intel(R) UHD Graphics 630 (CFL GT2), OpenGL 4.6)',
+-    };
+-    const patchGL = (proto: any): void => {
+-      if (!proto || !proto.getParameter) return;
+-      const orig = proto.getParameter;
+-      const wrapped = function (this: any, param: number): any {
+-        return param in spoof ? spoof[param] : orig.call(this, param);
+-      };
+-      try { (wrapped as any).toString = orig.toString.bind(orig); } catch { /* keep going */ }
+-      proto.getParameter = wrapped;
+-    };
+-    patchGL(g.WebGLRenderingContext && g.WebGLRenderingContext.prototype);
+-    patchGL(g.WebGL2RenderingContext && g.WebGL2RenderingContext.prototype);
+-    // navigator.deviceMemory: real Chrome exposes it; absent on the bot.
+-    try {
+-      if (g.navigator && g.navigator.deviceMemory === undefined) {
+-        Object.defineProperty(g.navigator, 'deviceMemory', { get: () => 8, configurable: true });
+-      }
+-    } catch { /* best-effort */ }
+-    // chrome.runtime: window.chrome is present (stealth) but runtime is missing — a headless tell.
+-    try {
+-      if (g.chrome && !g.chrome.runtime) {
+-        g.chrome.runtime = { id: undefined, connect: () => {}, sendMessage: () => {} };
+-      }
+-    } catch { /* best-effort */ }
+-  });
+-
+   const pages = context.pages();
+   const page = pages.length > 0 ? pages[0] : await context.newPage();
+   return { context: context as BrowserContext, page: page as Page };
+diff --git a/core/meetings/services/bot/src/capture-bridge.ts b/core/meetings/services/bot/src/capture-bridge.ts
+index 86ce7c9..8392bcd 100644
+--- a/core/meetings/services/bot/src/capture-bridge.ts
++++ b/core/meetings/services/bot/src/capture-bridge.ts
+@@ -647,10 +647,12 @@ export async function launchBrowser(inv: Invocation): Promise<BrowserSession> {
+   // calls window.logBot?.(...) ("stream N connected", "capture started with N stream(s)", …); without
+   // exposing it those vanish and the capture is invisible. context.exposeFunction persists across the
+   // navigation to the meeting URL. Also forward page console errors/capture markers so faults surface.
+-  await context.exposeFunction('logBot', (m: string) => console.log(`[page] ${m}`)).catch(() => { /* already registered */ });
++  // Local ASR fork: DOM/caption/speaker diagnostics may contain meeting content.
++  await context.exposeFunction('logBot', (_m: string) => {}).catch(() => {});
+   page.on('console', (msg) => {
+     const t = msg.text();
+-    if (/perspeaker|capture|stream|vexabrowser|audiocontext|error|fail/i.test(t)) console.log(`[page-console:${msg.type()}] ${t}`);
++    // Local ASR fork: do not persist arbitrary page console content.
++    void t;
+   });
+ 
+   return {
+@@ -1229,7 +1231,7 @@ export async function startCaptureBridge(
+         // it is best-effort — an init throw is caught, logged ONCE, and the bot carries on exactly
+         // as it does today. The one thing the first live meeting must answer is whether the 0.10
+         // selectors still match, which is why captions-found / captions-absent are logged.
+-        if (w.VexaBrowserUtils?.createTeamsCaptions && !w.__vexaTeamsCaptions) {
++        if (false /* Local ASR fork: no platform caption consumption. */) {
+           try {
+             w.__vexaTeamsCaptions = w.VexaBrowserUtils.createTeamsCaptions({
+               selfName: botName,
+@@ -1304,7 +1306,7 @@ export async function startCaptureBridge(
+   // Captions are OFF by default now: the bot does not touch the meeting's UI to get a name source
+   // it was measured not to need (see TEAMS_ENABLE_CAPTIONS). Opt back in with
+   // VEXA_TEAMS_ENABLE_CAPTIONS=1; the reader still consumes captions a meeting already has on.
+-  if (inv.platform === 'teams' && TEAMS_ENABLE_CAPTIONS) {
++  if (false /* Local ASR fork: never enable Teams cloud captions. */) {
+     void runTeamsCaptionEnable(page, undefined, undefined, undefined, onObservation)
+       .catch(() => { /* the helper already swallows + observes */ });
+   }
+diff --git a/core/meetings/services/bot/src/config.ts b/core/meetings/services/bot/src/config.ts
+index 33432c5..21b1c1f 100644
+--- a/core/meetings/services/bot/src/config.ts
++++ b/core/meetings/services/bot/src/config.ts
+@@ -48,6 +48,8 @@ export function isPerTrackLanePlatform(p: Platform | string): boolean {
+ }
+ 
+ export interface AutomaticLeave {
++  /** Local ASR fork: per-meeting active capture ceiling, milliseconds. */
++  maxBotTime?: number;
+   waitingRoomTimeout?: number;
+   noOneJoinedTimeout?: number;
+   everyoneLeftTimeout?: number;
+diff --git a/core/meetings/services/bot/src/index.ts b/core/meetings/services/bot/src/index.ts
+index 13d2ae7..f2270d8 100644
+--- a/core/meetings/services/bot/src/index.ts
++++ b/core/meetings/services/bot/src/index.ts
+@@ -89,6 +89,8 @@ function meetingChannelId(inv: Invocation): string | number {
+ const DEFAULT_MAX_ACTIVE_MS = 4 * 60 * 60 * 1000; // 4 hours
+ function deriveMaxActiveMs(inv: Invocation, everyoneLeftMs: number, env: NodeJS.ProcessEnv = process.env): number {
+   const al = inv.automaticLeave ?? {};
++  // Local ASR fork: explicit limit is a ceiling, never raised to a silence timeout.
++  if (al.maxBotTime !== undefined && al.maxBotTime > 0) return al.maxBotTime;
+   const noOneJoined = al.noOneJoinedTimeout ?? 600_000;
+   const waitingRoom = al.waitingRoomTimeout ?? 300_000;
+   const MARGIN_MS = 60_000; // give the granular timeouts room to fire first
+@@ -163,6 +165,13 @@ export async function main(env: NodeJS.ProcessEnv = process.env): Promise<number
+   }
+ 
+   // ── build the LIVE transports → the pure orchestrator ──
++  // Local ASR fork defense-in-depth before browser launch. No raw recordings,
++  // tapes, identity restoration, external inference, or alternative platforms.
++  if (inv.platform !== 'teams' || inv.recordingEnabled || inv.captureSignalEnabled || inv.authenticated ||
++      inv.transcriptionServiceUrl !== 'http://asr-app:8000' || !inv.transcriptionServiceToken) {
++    console.error('[bot] local-only capture policy rejected invocation');
++    return 1;
++  }
+   const meetingId = meetingChannelId(inv);
+ 
+   // lifecycle.v1: HTTP POST to meeting-api when a callback URL is configured; console-only for
+@@ -200,7 +209,7 @@ export async function main(env: NodeJS.ProcessEnv = process.env): Promise<number
+   // single undefined-check and the capture path is byte-for-byte unchanged. VEXA_CAPTURE_SIGNAL=1
+   // enables it without a control plane (the local hot-loop path).
+   const signalRecorder: CaptureSignalRecorder | null =
+-    (inv.captureSignalEnabled ?? env.VEXA_CAPTURE_SIGNAL === '1')
++    (false as boolean) /* Local ASR fork: raw fixture tap is unconditionally disabled. */
+       ? createCaptureSignalRecorder(inv)
+       : null;
+   if (signalRecorder) console.log(`[bot] capture-signal recording → ${signalRecorder.path}`);
+diff --git a/core/meetings/services/bot/warm-hf-cache.mjs b/core/meetings/services/bot/warm-hf-cache.mjs
+index 7d6423f..037d1fb 100644
+--- a/core/meetings/services/bot/warm-hf-cache.mjs
++++ b/core/meetings/services/bot/warm-hf-cache.mjs
+@@ -75,8 +75,8 @@ const WARM_ATTEMPTS = OFFLINE ? 1 : 4;
+ let lastErr;
+ for (let attempt = 1; attempt <= WARM_ATTEMPTS; attempt++) {
+   try {
+-    const model = await AutoModel.from_pretrained(MODEL_ID, { device: 'cpu' });
+-    const processor = await AutoProcessor.from_pretrained(MODEL_ID);
++    const model = await AutoModel.from_pretrained(MODEL_ID, { device: 'cpu', dtype: 'fp32', revision: '733a93b6473d019a773298e08cefa686894b1854' });
++    const processor = await AutoProcessor.from_pretrained(MODEL_ID, { revision: '733a93b6473d019a773298e08cefa686894b1854' });
+     if (!model || !processor) throw new Error('from_pretrained returned empty');
+     console.log(`[warm-hf-cache] OK: model + processor loaded in ${Date.now() - t0}ms (attempt ${attempt})`);
+     lastErr = undefined;
+diff --git a/core/meetings/services/meeting-api/src/meeting_api/bot_spawn/router.py b/core/meetings/services/meeting-api/src/meeting_api/bot_spawn/router.py
+index 4423a00..80a85d3 100644
+--- a/core/meetings/services/meeting-api/src/meeting_api/bot_spawn/router.py
++++ b/core/meetings/services/meeting-api/src/meeting_api/bot_spawn/router.py
+@@ -140,6 +140,9 @@ def _resolve_automatic_leave(value: Optional[object]) -> dict:
+ 
+     waiting_room = timeout("max_wait_for_admission", "waiting_room_timeout") or lobby_budget_ms()
+     resolved = {"waitingRoomTimeout": waiting_room}
++    max_bot_time = timeout("max_bot_time")
++    if max_bot_time is not None:
++        resolved["maxBotTime"] = max_bot_time
+     no_one_joined = timeout("no_one_joined_timeout")
+     everyone_left = timeout("max_time_left_alone", "everyone_left_timeout")
+     if no_one_joined is not None:
+diff --git a/core/meetings/services/meeting-api/src/meeting_api/bot_spawn/service.py b/core/meetings/services/meeting-api/src/meeting_api/bot_spawn/service.py
+index 9336690..0dfc783 100644
+--- a/core/meetings/services/meeting-api/src/meeting_api/bot_spawn/service.py
++++ b/core/meetings/services/meeting-api/src/meeting_api/bot_spawn/service.py
+@@ -232,7 +232,8 @@ def _capture_signal_from_context(ctx: dict) -> bool:
+     because prod meetings are the fixture source and a transient identity blip must not silently
+     turn collection off fleet-wide. The kill switch is an explicit ``false``, nothing else.
+     """
+-    return ctx.get("capture_signal") is not False
++    # Local ASR fork: raw fixture collection is prohibited, including identity outage.
++    return False
+ 
+ 
+ def _bot_name_from_context(ctx: dict) -> Optional[str]:
+@@ -468,7 +469,12 @@ async def request_bot(
+     transcription_service_token = os.getenv("TRANSCRIPTION_SERVICE_TOKEN") or None
+     transcription_model = os.getenv("TRANSCRIPTION_MODEL") or None
+     bot_context = await _fetch_bot_context(user_id)
+-    configured = _transcription_from_context(bot_context)
++    # Local ASR fork: identity settings may NEVER redirect meeting audio.
++    configured = {}
++    if transcription_service_url != "http://asr-app:8000" or not transcription_service_token:
++        raise TranscriptionNotConfigured("Local ASR requires http://asr-app:8000 and its bearer token")
++    if platform != "teams" or recording_enabled or env_flag("BOT_AUTHENTICATED", False):
++        raise TranscriptionNotConfigured("This deployment permits anonymous Teams transcription only, with recording disabled")
+     # O-TEL-1 fixture collection, resolved from the SAME best-effort lookup (one hop, two readers).
+     # Default ON: only an explicit false from identity stops the tape.
+     capture_signal_enabled = _capture_signal_from_context(bot_context)
+@@ -766,7 +772,7 @@ async def request_bot(
+         # O-TEL-1: the tape is INDEPENDENT of recording_enabled — a meeting the user never asked to
+         # record still yields a fixture. Both ride the same upload endpoint below.
+         capture_signal_enabled=capture_signal_enabled,
+-        recording_upload_url=f"{meeting_api_url}/internal/recordings/upload",
++        recording_upload_url=None,  # Local ASR fork: no raw-recording upload capability.
+         authenticated=True if authenticated else None,
+         userdata_s3_path=auth_userdata_path,
+         s3_endpoint=auth_s3.get("s3_endpoint"),
+diff --git a/core/meetings/services/meeting-api/src/meeting_api/lifecycle/retry.py b/core/meetings/services/meeting-api/src/meeting_api/lifecycle/retry.py
+index 7dc0f3d..c27c517 100644
+--- a/core/meetings/services/meeting-api/src/meeting_api/lifecycle/retry.py
++++ b/core/meetings/services/meeting-api/src/meeting_api/lifecycle/retry.py
+@@ -57,8 +57,7 @@ _PERMANENT: frozenset[CompletionReason] = frozenset(
+ def classify_retry(reason: Optional[CompletionReason]) -> RetryClass:
+     """Map a CompletionReason to its retry class. Unknown / None → PERMANENT (fail-safe: never
+     retry something we cannot positively class as transient)."""
+-    if reason in _TRANSIENT:
+-        return RetryClass.TRANSIENT
++    # Local ASR fork: a new join always requires a fresh operator-authorized job.
+     return RetryClass.PERMANENT
+ 
+ 
+diff --git a/core/runtime/src/runtime_kernel/docker_backend.py b/core/runtime/src/runtime_kernel/docker_backend.py
+index 9052858..a7480e5 100644
+--- a/core/runtime/src/runtime_kernel/docker_backend.py
++++ b/core/runtime/src/runtime_kernel/docker_backend.py
+@@ -193,7 +193,15 @@ class DockerBackend:
+         name = self._cname(workload_id)
+         _leaf, worker_labels = _worker_naming(workload_id)
+ 
+-        host_config: dict[str, Any] = {}
++        # Local ASR fork: enforce bounds on dynamically spawned browser containers,
++        # not only on Compose control-plane services. Validate under real workload.
++        host_config: dict[str, Any] = {
++            "Memory": 4 * 1024 * 1024 * 1024,
++            "MemorySwap": 4 * 1024 * 1024 * 1024,
++            "NanoCpus": 2_000_000_000,
++            "PidsLimit": 512,
++            "LogConfig": {"Type": "json-file", "Config": {"max-size": "10m", "max-file": "2"}},
++        }
+         network = os.getenv("DOCKER_NETWORK")
+         if network:
+             host_config["NetworkMode"] = network

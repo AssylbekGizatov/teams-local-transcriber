@@ -1,2 +1,126 @@
-# teams-local-transcriber
-Self-hosted Kazakh, Russian and English transcription for authorized Teams meetings.
+# Teams ASR Platform
+
+Самостоятельно размещаемая платформа для расшифровки встреч на казахском, русском и английском языках. Собственный интерфейс оператора, локальная модель **GigaAM Multilingual 220M CTC**, очередь заданий, редактирование текста и экспорт TXT / Markdown / Word / PDF. Внешний STT-сервис и дополнительная LLM не используются.
+
+## Что действительно реализовано
+
+- Русскоязычный веб-интерфейс: история, ссылка Teams, загрузка записи, статусы, остановка, редактор стенограммы, четыре формата экспорта.
+- Реальный локальный inference GigaAM, сегментация длинного аудио с перекрытием, таймкоды, защита декодера от сетевых плейлистов. Модель загружается только с локального диска.
+- SQLite WAL: задания и стенограммы переживают перезапуск; конфликты правок обнаруживаются по версии. Ошибка внешнего join не приводит к скрытому повторному подключению.
+- OpenAI-совместимый внутренний `/v1/audio/transcriptions` для аудиочанков Vexa. Это локальный API, а не обращение к OpenAI.
+- Экспериментальный Teams-коннектор на закреплённой версии Vexa: реальный REST lifecycle и браузерный worker, получение стенограммы конкретной сессии, проверяемая остановка, документированные privacy-патчи.
+- Раздельные токены оператора и сервиса ASR, ограничения размера/длительности/очереди, явное подтверждение полномочий для каждого задания.
+
+## Важная граница готовности
+
+**Локальное распознавание и API проверены. Подключение к реальной Teams-встрече в конкретном корпоративном tenant не проверено.** Docker image, GPU и нагрузка параллельных встреч требуют проверки на вашем сервере. Подробности: [TEST_REPORT.md](docs/TEST_REPORT.md).
+
+Teams-коннектор по умолчанию выключен. Vexa использует браузерный Teams-клиент; Apache-2.0 лицензия кода не является разрешением Microsoft на этот сценарий. До включения нужны документированное согласование доступа с организацией/платформой, разрешённые конкретные встречи, уведомление участников и необходимые согласия. Код не обходит lobby, CAPTCHA, SSO, отказ в записи или политики организации. Для официального Graph application-hosted media действуют отдельные требования Windows Server / Azure и сохранения derived data; эта реализация не выдаётся за сертифицированный policy-based recording solution.
+
+Это **одноузловой пилот с общим операторским доступом**, а не готовая многопользовательская SaaS-система: SSO/RBAC, tenant isolation, HA, DLP, автоматическая правовая проверка и сертификация не реализованы.
+
+## Быстрый локальный запуск (CPU)
+
+Нужны Python 3.12, Git, FFmpeg, шрифт DejaVu Sans и примерно 4–8 GB свободной RAM. Это стартовая конфигурация, не гарантия real-time или числа встреч. Модель занимает около 883 MB; зависимости занимают больше. CPU smoke измерен отдельно в тестовом отчёте.
+
+```bash
+# Linux Debian/Ubuntu, установка системных зависимостей администратором:
+sudo apt-get update
+sudo apt-get install -y python3-venv ffmpeg git fonts-dejavu-core
+
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install --require-hashes -r requirements.txt
+python -m pip install torch==2.10.0 torchaudio==2.10.0 --index-url https://download.pytorch.org/whl/cpu
+python -m pip install -r requirements-asr.lock
+
+python scripts/generate_env.py
+python scripts/download_models.py --backend gigaam --output models/gigaam
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --no-access-log
+```
+
+Откройте `http://127.0.0.1:8000`. Введите `APP_API_TOKEN` из своего `.env`. Он хранится только в sessionStorage вкладки; кнопка выхода удаляет его. Не передавайте токен в URL, скриншотах или публичных issue.
+
+Для первого теста загрузите аудио, которое вы вправе обрабатывать. Подтвердите полномочия, дождитесь статуса «Завершено», проверьте текст и выгрузите нужный формат. GigaAM multilingual не гарантирует пунктуацию, точность терминологии и одинаковое качество трёх языков. Английский слабее KK/RU по описанию авторов; требуется собственный тестовый набор. Диаризация/идентификация по голосу не выполняется.
+
+## Docker Compose
+
+Docker Engine и Compose v2 устанавливаются отдельно. Веса скачиваются явно перед запуском; контейнер работает с read-only моделью и не скачивает её автоматически.
+
+```bash
+python scripts/generate_env.py
+python scripts/download_models.py --output models/gigaam
+# Запускайте ровно один профиль, на одном узле:
+docker compose --profile cpu up --build -d
+# либо NVIDIA GPU + NVIDIA Container Toolkit:
+docker compose --profile gpu up --build -d
+```
+
+Порт опубликован только на `127.0.0.1:8000`. Для командного доступа поставьте корпоративный reverse proxy с TLS, сетевым allowlist/VPN и SSO перед приложением; добавьте hostname в `TRUSTED_HOSTS`. Не публикуйте ASR endpoint или Vexa admin API в интернет. Не запускайте одновременно CPU/GPU профили и несколько Uvicorn workers против одной очереди.
+
+Образы базовой ОС используют официальный обновляемый тег; перед утверждением production-сборки зафиксируйте digest образа и просканируйте итоговый SBOM. Python-зависимости закреплены в `uv.lock`, `requirements.txt`, `requirements-asr.lock`; Vexa и GigaAM source/models закреплены точными revision/checksum.
+
+## Подключение Teams
+
+Полная пошаговая инструкция: [docs/TEAMS_CONNECTOR.md](docs/TEAMS_CONNECTOR.md). Не используйте произвольный Vexa cloud endpoint или неподготовленный upstream image: локальные privacy-патчи обязательны.
+
+1. Получите согласование допустимого сценария; сохраните ссылку/номер документа в `TEAMS_AUTHORIZATION_REFERENCE`.
+2. Подготовьте закреплённый и пропатченный Vexa с помощью `scripts/vendor_vexa.sh`, соберите его отдельный Compose на выделенной VM. У него привилегированный доступ к Docker для изоляции браузерных ботов.
+3. Создайте Vexa API key локально согласно инструкции. Используйте один и тот же `ASR_API_TOKEN` у платформы и Vexa, но отдельный `APP_API_TOKEN` для оператора.
+4. Внесите точные разрешённые native meeting IDs в `TEAMS_ALLOWED_MEETING_IDS`, при необходимости дополнительный tenant allowlist. URL-параметр tenant сам по себе не доказывает принадлежность встречи.
+5. В `.env` задайте `VEXA_API_URL=http://vexa-gateway:8000`, `VEXA_API_KEY`, `TEAMS_ENABLED=true`. Включение означает только вашу настройку, не автоматическое подтверждение соответствия правилам Microsoft.
+6. После создания Docker-сети Vexa запустите платформу с override:
+
+```bash
+docker compose -f compose.yaml -f deploy/compose.teams.yaml --profile cpu up -d --build
+```
+
+В интерфейсе вставьте разрешённую Teams-ссылку, подтвердите конкретную встречу и начните пилот. Организатор допускает видимого бота из lobby обычным способом. Если платформа или участник отказывает, остановите сессию. `needs_review` означает неопределённый результат: проверьте Vexa/Teams, завершите возможного оставшегося бота и только потом создавайте новое задание. Автоматического обхода или повторного join нет.
+
+## Эксплуатация и данные
+
+- Операторский токен даёт доступ ко всем заданиям этой установки. Для разделения подразделений используйте отдельные экземпляры до появления настоящей RBAC/SSO-модели.
+- По умолчанию исходный загруженный файл удаляется после обработки/ошибки/отмены. При ошибке повторная загрузка может потребоваться. `RETAIN_AUDIO=true` включает сохранение источника для ручного retry.
+- `/v1/audio/transcriptions` удаляет временный исходный файл после ответа. Нормализованные промежуточные WAV удаляются контекстным менеджером; аварийное завершение процесса может оставить временные файлы до административной очистки.
+- Стенограммы, таймкоды, ручные правки и audit событий хранятся в локальной SQLite. Экспорты генерируются по запросу и отдельно не архивируются сервером.
+- `RETENTION_DAYS` — порог для явной команды очистки, не автоматически включённое расписание. Сначала dry-run, затем осознанный `--apply`:
+
+```bash
+python scripts/prune_data.py
+python scripts/prune_data.py --apply
+```
+
+Удаляются только просроченные `completed/failed/cancelled` задания этого приложения. Активные и `needs_review` не удаляются. Vexa/PostgreSQL, Redis, логи, снапшоты и backup — отдельные копии с отдельной политикой удаления. Не заявляйте полное удаление данных после одной этой команды.
+
+Подробнее: [SECURITY.md](SECURITY.md), [docs/ASR.md](docs/ASR.md), [docs/OPERATIONS.md](docs/OPERATIONS.md), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## API
+
+Все `/api/*` требуют `Authorization: Bearer <APP_API_TOKEN>`; `/v1/*` требует отдельный `ASR_API_TOKEN`. Запросы без нужного токена отсекаются до чтения загружаемого тела.
+
+| Метод | Endpoint | Назначение |
+|---|---|---|
+| GET | `/api/config` | Возможности и безопасные параметры |
+| GET/POST | `/api/meetings` | История / разрешённый Teams join |
+| POST | `/api/uploads` | multipart file, title, language, consent_confirmed |
+| GET | `/api/meetings/{id}` | Статус, сегменты, версия, audit |
+| POST | `/api/meetings/{id}/stop` | Остановка с подтверждаемым состоянием |
+| POST | `/api/meetings/{id}/retry` | Повтор local upload, если источник сохранён |
+| PATCH | `/api/meetings/{id}/segments/{segment_id}` | text, speaker, version |
+| GET | `/api/meetings/{id}/export?format=pdf` | txt/md/docx/pdf |
+| POST | `/v1/audio/transcriptions` | Внутренний локальный ASR |
+| GET | `/healthz` | Liveness, не доказательство готовности модели |
+
+Языки: `auto`, `kk`, `ru`, `en`. GigaAM остаётся multilingual независимо от выбранного hint; это не жёсткий language filter. Все ответы относятся к текущей версии стенограммы; экспорт до завершения встречи частичный.
+
+## Проверка и разработка
+
+```bash
+python -m pip install uv==0.8.22
+uv sync --frozen --group dev
+uv run ruff check app tests scripts
+uv run python -m pytest -q
+node --check app/static/app.js
+```
+
+Большинство unit/API тестов используют явно обозначенные фейки. Реальный neural smoke запускается отдельно по инструкции ASR и не требует Teams. Перед пилотом обязательны сценарии lobby/rejection/stop, повторные клики, перезапуск сервера, недоступность локального ASR, Unicode exports, consent/retention и проверка сетевого egress.

@@ -1,0 +1,6 @@
+# Native GigaAM code is pinned; the runtime never executes HF remote Python.
+gigaam @ git+https://github.com/salute-developers/GigaAM.git@7447938d791c4f3e643386ee22c33777004293a5
+torch==2.10.0
+torchaudio==2.10.0
+# Optional alternative: pip install faster-whisper==1.2.1
+# CPU install: install torch/torchaudio from https://download.pytorch.org/whl/cpu first.

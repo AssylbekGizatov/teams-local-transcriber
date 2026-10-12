@@ -1,0 +1,15 @@
+{
+  "name": "soz-dashboard-checks",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Development-only DOM checks for the framework-free dashboard",
+  "scripts": {
+    "test": "node tests/ui_smoke.cjs"
+  },
+  "devDependencies": {
+    "jsdom": "26.1.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

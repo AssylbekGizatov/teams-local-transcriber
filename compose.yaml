@@ -1,0 +1,59 @@
+name: teams-asr-platform
+x-app: &app
+  image: teams-asr-platform:local
+  env_file: .env
+  environment:
+    TMPDIR: /data/tmp
+    DATA_DIR: /data
+    ASR_MODEL_PATH: /models/gigaam
+    ASR_DEVICE: cpu
+    HF_HUB_OFFLINE: "1"
+    TRANSFORMERS_OFFLINE: "1"
+    HF_HUB_DISABLE_TELEMETRY: "1"
+  volumes:
+    - platform-data:/data
+    - ./models:/models:ro
+  ports:
+    - "127.0.0.1:8000:8000"
+  restart: unless-stopped
+  init: true
+  read_only: true
+  tmpfs:
+    - /tmp:size=256m,mode=1777
+  security_opt:
+    - no-new-privileges:true
+  cap_drop: [ALL]
+  pids_limit: 256
+  mem_limit: 8g
+  cpus: 4
+  stop_grace_period: 5m
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+services:
+  platform:
+    <<: *app
+    profiles: [cpu]
+    build:
+      context: .
+      args:
+        TORCH_INDEX_URL: https://download.pytorch.org/whl/cpu
+  platform-gpu:
+    <<: *app
+    profiles: [gpu]
+    image: teams-asr-platform:gpu
+    build:
+      context: .
+      args:
+        TORCH_INDEX_URL: https://download.pytorch.org/whl/cu128
+    environment:
+      TMPDIR: /data/tmp
+      DATA_DIR: /data
+      ASR_MODEL_PATH: /models/gigaam
+      ASR_DEVICE: cuda
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+    gpus: all
+volumes:
+  platform-data:
