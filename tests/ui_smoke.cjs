@@ -86,6 +86,14 @@ w.fetch = async (path, options = {}) => {
   if (options.headers.get("Authorization") !== "Bearer " + token)
     return response({ detail: "Invalid or missing Bearer token" }, 401);
   if (path === "/api/config") return response(config);
+  if (path === "/api/readiness") return response({
+    status: "needs_setup",
+    model: { status: "files_present" },
+    dependencies: { status: "discoverable" },
+    ffmpeg: { status: "executable_found" },
+    worker: { status: "not_running" },
+    teams: { status: config.teams_enabled ? "configured_unverified" : "disabled" },
+  });
   if (path === "/api/meetings" && (!options.method || options.method === "GET"))
     return response({ items: clone(meetings) });
   if (path === "/api/uploads") {
@@ -194,6 +202,8 @@ function editFirst() {
   assert.equal(w.localStorage.length, 0);
   assert.equal($("admin-token").value, "");
   assert(!$("start-button").disabled);
+  assert($("readiness-checks").textContent.includes("Контрольные суммы здесь не проверяются"));
+  assert($("readiness-checks").textContent.includes("Обработчик очереди не запущен"));
   $("auto-refresh").checked = false;
   click("teams-tab");
   assert($("start-button").disabled);
@@ -311,6 +321,7 @@ function editFirst() {
   click("refresh");
   await sleep(15);
   click("teams-tab");
+  assert($("readiness-checks").textContent.includes("реальная встреча не проверены"));
   assert(!$("start-button").disabled);
   $("meeting-title").value = "Разрешённая Teams встреча";
   $("meeting-url").value = "https://teams.microsoft.com/l/meetup-join/test";
@@ -326,6 +337,7 @@ function editFirst() {
   click("access-button");
   click("logout-button");
   assert.equal(w.sessionStorage.getItem("soz_admin_token"), null);
+  assert.equal($("readiness-checks").children.length, 0);
   assert($("transcript-content").hidden);
   assert($("start-button").disabled);
   assert.equal($("nav-count").textContent, "0");

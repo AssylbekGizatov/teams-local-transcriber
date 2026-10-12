@@ -2,6 +2,14 @@
 
 This is a single-operator, single-node pilot. Do not expose it directly to the public Internet or treat it as certified Teams recording software.
 
+## Launcher and provisioning boundary
+
+The Windows easy-start scripts are convenience entry points, not permission to install or run software prohibited by the organization. They do not install Docker, elevate to administrator, weaken PowerShell execution policy or bypass corporate controls. If the scripts or Docker are blocked, stop and ask IT for an approved deployment or service URL.
+
+Everyday launch uses an already provisioned local image and model. IT preparation is a distinct, explicitly approved build/download step. Review the source, outbound dependency/model sources, licenses and final image before approval; pinned model hashes do not establish that an entire OS image or dependency chain is safe. An offline image archive and model directory must be supplied and verified through a trusted IT process. The source ZIP alone is not an offline runtime.
+
+Keep `.env`, local tokens, recordings, transcripts, Docker volumes and exported files out of source archives and public repositories. Do not send credentials in a URL or paste diagnostic output containing secrets. A localhost-only listener reduces network exposure but does not protect against other authorized processes or users on the host. File permissions and host/device controls remain IT responsibilities.
+
 ## Trust boundaries
 
 - The browser operator token can read/edit/export every meeting on this instance. There are no per-user ACLs, SSO, independent organizations, tenant isolation or user audit attribution. Put an approved identity-aware TLS proxy and VPN/network policy in front, or run one isolated instance per authorized group.

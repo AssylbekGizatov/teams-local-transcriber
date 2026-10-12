@@ -1,5 +1,15 @@
 # Operations
 
+## Easy-start operations
+
+For the three-step Windows operator path and separate IT provisioning, see [EASY_START.md](EASY_START.md). This is the full local web application; notebooks are optional experiments and are not required at runtime.
+
+The easy-start launcher uses a pre-provisioned CPU image and read-only local models. Everyday startup must not build an image, install dependencies or download missing models. `easy-start/CHECK.cmd` checks prerequisites, configuration and pinned model hashes; it is not a successful neural inference test. `easy-start/STOP.cmd` asks the operator to reconcile active/ambiguous Teams sessions and type `STOP`, then stops the application without deleting persisted data or model files. The prompt is an operator confirmation, not an automated bot-exit check. Stopping this application does not establish that a separately deployed Vexa bot has left Teams.
+
+IT owns the one-time preparation, Docker approval/installation, artifact provenance, host security, resource sizing and operational acceptance. The source ZIP does not include a runnable image or weights. For restricted corporate workstations, provide an authorized service URL through a managed TLS/identity-aware proxy rather than asking users to install tools or weaken policy. The default local listener remains loopback-only.
+
+Do not run the easy-start stack alongside another application profile using the same port or database. Keep one queue owner. Before replacing an image or model, stop admission, finish/reconcile work, back up data and follow the upgrade policy below. Preserve local `.env` secrets separately from source archives; do not regenerate them casually during upgrades.
+
 ## Deployment shape
 
 One Uvicorn process, one durable dispatcher, one local inference model, SQLite WAL and local files. Vexa supplies isolated browser workers plus its own PostgreSQL/Redis stack. Vexa is optional for file ingestion. CPU/GPU Compose profiles are alternatives, not concurrent replicas. GPU profile requires NVIDIA Container Toolkit and a driver compatible with the official CUDA 12.8 wheels.

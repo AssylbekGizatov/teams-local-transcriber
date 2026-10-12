@@ -2270,3 +2270,8 @@ textarea::placeholder {
   border-color: #eadcb7;
   background: #fcf6e8;
 }
+
+.readiness-panel { margin-bottom: 24px; padding: 24px; }
+.readiness-panel h2 { margin: 8px 0; }
+.readiness-checks { padding-left: 20px; line-height: 1.7; overflow-wrap: anywhere; }
+.readiness-panel > p { line-height: 1.6; }

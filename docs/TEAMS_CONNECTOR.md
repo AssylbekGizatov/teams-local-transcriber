@@ -1,5 +1,11 @@
 # Experimental Teams capture connector
 
+## Relation to easy-start
+
+[Easy-start](EASY_START.md) launches the full local upload/transcription service. It does not install Vexa, configure a Teams tenant, obtain meeting permission or validate a real join. Teams remains disabled by default. Complete local audio acceptance first; this document is a separate, IT-owned optional deployment requiring the approvals below. Configure the dedicated Vexa deployment described here first. When IT explicitly sets `TEAMS_ENABLED=true` with the required approval reference, meeting allowlist and key, easy-start selects the Teams Compose override and requires the existing `teams-asr-vexa` network. This does not provision Vexa or test a join.
+
+A restricted corporate Windows user should receive an IT-provisioned service URL, not instructions to bypass PowerShell, Docker, SSO or meeting policy. The source archive includes connector code and deployment instructions, not a ready-to-run Vexa stack or its models.
+
 ## What is implemented
 
 A real adapter to the self-hosted [Vexa](https://github.com/Vexa-ai/vexa) browser worker,
@@ -48,7 +54,7 @@ This unresolved production approval and detection work is why capture ships off.
 
 ## Minimal source-built deployment
 
-Use a dedicated Linux Docker host or disposable VM, not a shared workstation or
+Use a dedicated disposable Linux VM, not a shared workstation or
 corporate Docker daemon. The runtime mounts the Docker socket and can control the
 host daemon. The browser presently inherits `--no-sandbox`; container isolation
 is not a substitute for a dedicated security boundary. Do not expose the Vexa

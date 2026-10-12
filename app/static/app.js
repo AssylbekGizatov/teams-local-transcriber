@@ -43,6 +43,7 @@
   const state = {
     token: storedToken,
     config: null,
+    readiness: null,
     meetings: [],
     selectedId: null,
     meeting: null,
@@ -175,6 +176,37 @@
     return response.status === 204 ? null : response.json();
   }
 
+  function renderReadiness() {
+    const value = state.token ? state.readiness : null;
+    $("readiness-checks").replaceChildren();
+    $("readiness-summary").textContent = !value
+      ? "Подключитесь или обновите страницу, чтобы проверить настройки сервиса."
+      : value.status === "prerequisites_present"
+        ? "Локальные предпосылки проверены. Работу распознавания ещё нужно проверить записью."
+        : "Перед обработкой требуется настройка сервера.";
+    if (!value) return;
+    const checks = [
+      value.model.status === "files_present"
+        ? "Модель: файлы найдены. Контрольные суммы здесь не проверяются; GigaAM проверяет их при загрузке модели."
+        : "Модель: не хватает файлов. Администратору нужно выполнить scripts/download_models.py и настроить ASR_MODEL_PATH.",
+      value.dependencies.status === "discoverable"
+        ? "ASR-пакеты найдены. Их загрузка и совместимость ещё не проверены."
+        : "ASR-пакеты отсутствуют. Установите зависимости выбранного backend.",
+      value.ffmpeg.status === "executable_found"
+        ? "FFmpeg: исполняемый файл найден."
+        : "FFmpeg отсутствует. Установите его на сервере.",
+      value.worker.status === "running"
+        ? "Обработчик очереди запущен."
+        : "Обработчик очереди не запущен. Проверьте WORKER_ENABLED и перезапустите сервис.",
+      value.teams.status === "disabled"
+        ? "Teams отключён. Для подключения нужны разрешение организации и настройки коннектора."
+        : value.teams.status === "configured_unverified"
+          ? "Teams: параметры разрешения и коннектора заданы. Доступность и реальная встреча не проверены."
+          : "Teams: настройка не завершена. Проверьте разрешение, список встреч, ключ Vexa, адрес коннектора и ASR-токен.",
+    ];
+    for (const check of checks) $("readiness-checks").append(node("li", "", check));
+  }
+
   function renderConfig() {
     const config = state.config;
     const connected = Boolean(config && state.token);
@@ -192,7 +224,7 @@
     $("backend-title").textContent = !connected
       ? "Ожидаем подключение"
       : config.model_configured
-        ? "ASR настроен"
+        ? "Путь ASR настроен"
         : "ASR не настроен";
     $("backend-subtitle").textContent = connected
       ? `${config.asr_backend || "ASR"} · доступ по токену`
@@ -211,6 +243,7 @@
       ? "Для начала нажмите «Подключиться» вверху и введите токен администратора."
       : "Модель ASR не настроена. Администратору нужно настроить сервер перед обработкой.";
     $("logout-button").hidden = !state.token;
+    renderReadiness();
     renderStartButton();
   }
   function renderStartButton() {
@@ -509,6 +542,15 @@
         state.config = result;
         renderConfig();
       }
+      try {
+        const readiness = await json("/api/readiness");
+        if (authEpoch !== state.authEpoch) return;
+        state.readiness = readiness;
+      } catch (_) {
+        if (authEpoch !== state.authEpoch) return;
+        state.readiness = null;
+      }
+      renderReadiness();
       const data = await json("/api/meetings");
       if (authEpoch !== state.authEpoch) return;
       const nextMeetings = Array.isArray(data) ? data : data.items || [];
@@ -873,6 +915,7 @@
     try {
       const config = await json("/api/config");
       state.config = config;
+      state.readiness = null;
       try {
         sessionStorage.setItem(TOKEN_KEY, token);
       } catch (_) {
@@ -918,6 +961,7 @@
     state.authEpoch++;
     state.selectionEpoch++;
     state.config = null;
+    state.readiness = null;
     state.meetings = [];
     state.selectedId = null;
     state.meeting = null;

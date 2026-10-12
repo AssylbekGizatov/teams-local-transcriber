@@ -18,6 +18,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.config import Settings, get_settings
 from app.db import ACTIVE, ConflictError, Database
+from app.readiness import service_readiness
 from app.worker import InferenceBusyError, Worker
 
 logger = logging.getLogger(__name__)
@@ -237,6 +238,10 @@ def create_app(settings: Settings | None = None, *, asr=None, connector=None) ->
     @app.get("/healthz")
     async def health():
         return {"status": "ok"}
+
+    @app.get("/api/readiness", dependencies=[Depends(operator)])
+    def readiness():
+        return service_readiness(settings, worker)
 
     @app.get("/api/config", dependencies=[Depends(operator)])
     async def config():

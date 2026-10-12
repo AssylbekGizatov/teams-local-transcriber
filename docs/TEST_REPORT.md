@@ -55,3 +55,11 @@ CI found and prompted a reproducibility correction after the first publication: 
 ## Pilot acceptance required
 
 Use a specifically approved disposable Teams meeting with notified participants. Verify ordinary lobby admission, visible bot identity, local-only effective inference route, transcript completeness, explicit rejection/stop, concurrent-client edit conflicts, ASR outage, duplicate submission, server/bot restart and every retained copy. Establish a per-language accuracy and latency threshold before expanding use. Do not enable the connector solely because the source tests passed.
+
+## Easy-start update (2026-10-12)
+
+- Added Windows `START`, `STOP`, `CHECK`, `LOGIN-TOKEN` and explicitly approved `IT/PREPARE` launchers. Ordinary start never builds/pulls an image or downloads model files; hashes are checked against the runtime's pinned model manifest.
+- Added authenticated `/api/readiness` and a Russian dashboard preflight panel. These report prerequisites only, not successful neural inference, model initialization, a reachable Teams tenant or a tested live join. No private paths, tokens or connector URLs are returned.
+- Fresh pinned Vexa source preparation and its integrity/privacy verifier passed. Aggregate Python suite: **127 passed, 2 skipped** (opt-in real neural tests were not rerun for this update). Ruff and JavaScript syntax checks passed. Dashboard DOM smoke passed with readiness checks, **39 stubbed API calls**, zero jsdom errors.
+- Windows PowerShell mock contract tests are included in CI. They cover explicit/cancelled provisioning, random distinct tokens, retained existing credentials, missing/bad-hash models, unsupported Teams booleans, no implicit downloads on Start, cancelled token/stop actions, stop after broken Teams settings and remote Docker rejection. This executor has neither PowerShell nor Docker; these Windows tests and real Windows/Docker launch were **not run locally**. CI must pass for the published commit; even a green mocked job is not a live container test.
+- The source ZIP includes all three notebooks, scripts, deployment files and a per-file SHA256 manifest. It deliberately excludes credentials, container images, model weights, meeting recordings/databases and untracked local files. IT must provision runtime dependencies separately; this ZIP alone cannot operate offline.
