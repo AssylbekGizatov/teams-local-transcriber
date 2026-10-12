@@ -13,7 +13,8 @@ pinned to `f1a62fbbdfd2c98cb162582d82c31fe8102acc89`, with a reviewed local-only
 source patch. The original source is Apache-2.0; its license and third-party
 inventory accompany this deployment. This is an experimental browser adapter,
 not a Microsoft-supported Graph media bot and not a certification that browser
-recording is permitted. No real meeting was joined during development.
+recording is permitted. A personal Teams Free pilot has exercised admission and
+clean stop; this does not certify corporate tenants or continuous transcription.
 
 A URL submitted to the local application becomes `POST /bots` at the local Vexa
 gateway. A visible `Local transcription bot` requests ordinary anonymous entry.
@@ -71,7 +72,7 @@ cp deploy/vexa/.env.example deploy/vexa/.env
 # and the SAME ASR_API_TOKEN used by the application. Do not use example secrets.
 docker compose --env-file deploy/vexa/.env -f deploy/vexa/compose.yaml --profile build-only build
 # Start your local ASR app on the teams-asr-vexa network as alias asr-app:8000.
-docker compose --env-file deploy/vexa/.env -f deploy/vexa/compose.yaml up -d
+docker compose --env-file deploy/vexa/.env -f deploy/vexa/compose.yaml up -d --wait --wait-timeout 120
 ```
 
 The `teams-asr-vexa` Docker network is created by this compose file. When using a
@@ -95,7 +96,9 @@ credential creation. Export the same `VEXA_ADMIN_TOKEN`, then manually run:
 python3 deploy/vexa/bootstrap.py --confirm-local-credential-creation
 ```
 
-The script writes a `bot`-scoped key to `data/vexa-api-key` with mode 0600. Configure
+The script writes a `bot` + `tx` scoped key to `data/vexa-api-key` with mode 0600.
+Both scopes are required: `bot` controls the lifecycle and `tx` reads the exact
+session transcript. A bot-only key can join while transcript polling fails with 403. Configure
 that value as the application's `VEXA_API_KEY`; set `VEXA_API_URL` to
 `http://vexa-gateway:8000` on the shared network or `http://127.0.0.1:18056` on the
 host. This script was not run during development. Do not expose or send the key.
@@ -182,6 +185,79 @@ until the exact row is terminal. Unknown statuses and missing rows fail closed.
 The worker must handle a cancel that arrives during create by stopping the
 returned handle before any further work. At `needs_help`, request safe stop and
 require review; never solve an access challenge.
+
+## Prepared Windows deployment
+
+After the documented source verification, image build and local credential setup,
+run `powershell -NoProfile -File scripts/start_teams.ps1` from the checkout. It
+checks the Linux Docker engine, prepared images and exact vendor patch, waits for
+healthy dependencies, starts the application, and waits for model warmup. It
+does not overwrite credentials, download dependencies or create meeting jobs.
+Updating a deployment with a running browser bot is refused. Existing queued
+application jobs remain durable and are processed by the worker when it starts.
+
+The Teams Compose overlay sets `ASR_PRELOAD=true`. Warmup verifies GigaAM weights,
+loads one model, and runs a synthetic one-second silent inference locally. The
+dashboard reports `loading`, `ready` or `failed`; failed warmup prevents a new
+bot from joining. `/healthz` remains a cheap process liveness check and does not
+claim transcription quality. `ASR_CPU_THREADS` controls model CPU threads
+(default four); choose a lower value if the host must share CPU with other work.
+
+Teams with `TRANSCRIPTION_MODEL=local` uses a dedicated GigaAM CTC queue rather
+than the upstream Whisper agreement/CSRC engine. Original 16 kHz mixed PCM,
+including pauses and quiet frames, crosses the capture bridge. Ended tracks are
+excluded and disconnected; a replacement track can reuse the stream slot.
+The queue submits once per window, serially, at most 20 seconds per window,
+flushes after a 1.2-second pause and drains on stop. At most four windows are
+retained; sustained overload is reported as an STT fault with explicit audio
+loss, rather than silently growing memory. No cloud fallback is used.
+
+The bot watchdog allows 510 seconds and Docker stop allows 540 seconds: four
+in-flight/queued requests at the 120-second request deadline plus teardown must
+not be cut off by the upstream 20-second watchdog. A normal warm inference is
+much faster; an unresponsive backend can make stop take minutes. Transient
+gateway errors keep stop reconciliation running. A terminal capture failure
+remains a failure even when the bot has successfully left.
+
+The local mixed lane leaves speaker labels empty. Segment times describe capture
+windows, not exact word alignment. Long uninterrupted speech can cross a window
+boundary; overlap and simultaneous speakers still require live acceptance tests.
+The dashboard's "bot in meeting" state is not proof that speech reached ASR.
+
+Offline bot checks (inside the built bot image, no meeting/microphone access):
+
+```sh
+docker run --rm --network none --entrypoint node \
+  -v "$PWD/deploy/vexa/test-local-gigaam-stream.mjs:/tmp/test.mjs:ro" \
+  teams-asr-vexa-bot:f1a62fbb-local1 /tmp/test.mjs
+docker run --rm --network none --entrypoint node \
+  -v "$PWD/deploy/vexa/test-capture-replacement.mjs:/tmp/test.mjs:ro" \
+  teams-asr-vexa-bot:f1a62fbb-local1 /tmp/test.mjs
+```
+
+### Remaining acceptance checks
+
+The final capture/queue changes must be exercised in a fresh authorized Teams
+meeting: admission, a known phrase, Kazakh/Russian/English and mixed speech,
+stop, final transcript and TXT export. Offline tests and synthetic audio do not
+establish meeting speech accuracy. Corporate Teams has not been certified.
+
+For the local stabilization run, Python regression tests passed (133 passed,
+three opt-in tests skipped), Ruff passed, and the final TypeScript modules built.
+The Chromium regression delivered quiet synthetic PCM before and after replacing
+an ended track in the same stream slot, with just one active source retained.
+The queue regressions cover serialization, pause/stop flush, inference errors,
+timestamp gaps and explicit bounded overload. The pinned patch applied cleanly
+and the exported vendor tree passed the privacy verifier with LF line endings.
+
+An opt-in real-backend smoke is `deploy/vexa/test-local-asr-e2e.mjs`. Run it inside
+the prepared bot image on `teams-asr-vexa`, supply the local `ASR_API_TOKEN` and
+mount a public mono 16 kHz PCM16 WAV no longer than 20 seconds. It compares the
+actual bot pipeline with direct local STT on identical PCM, without connecting
+to a meeting. The 11.29-second public GigaAM sample matched exactly; the warm
+streaming request took approximately 1.37 seconds on the test Windows CPU host.
+This is a single-sample throughput observation, not a language accuracy score.
+The upload/worker/database/TXT export path also completed on the final deployment.
 
 ## Validation boundaries
 

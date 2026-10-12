@@ -51,7 +51,7 @@ def main():
     )
     token = post(
         f"/admin/users/{int(user['id'])}/tokens",
-        {"scopes": ["bot"], "name": "Local Teams ASR connector"},
+        {"scopes": ["bot", "tx"], "name": "Local Teams ASR connector"},
     )
     value = token.get("token")
     if not isinstance(value, str) or not value:

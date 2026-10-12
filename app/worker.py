@@ -24,6 +24,8 @@ class Worker:
         self.running = False
         self.task: asyncio.Task | None = None
         self.audio_tasks: dict[str, asyncio.Task] = {}
+        self.warmup_task: asyncio.Task | None = None
+        self.model_state = "not_loaded"
 
     def get_asr(self):
         if self.asr is None:
@@ -34,6 +36,7 @@ class Worker:
                     backend=self.settings.asr_backend,
                     model_path=self.settings.asr_model_path,
                     device=self.settings.asr_device,
+                    cpu_threads=self.settings.asr_cpu_threads,
                     chunk_seconds=self.settings.asr_chunk_seconds,
                     compute_type=self.settings.asr_compute_type,
                     max_audio_seconds=self.settings.max_audio_seconds,
@@ -49,9 +52,28 @@ class Worker:
         self.inference_waiters += 1
         try:
             async with self.inference_lock:
-                return await asyncio.to_thread(self.get_asr().transcribe, path, language=language)
+                inference = asyncio.create_task(
+                    asyncio.to_thread(self.get_asr().transcribe, path, language=language)
+                )
+                try:
+                    return await asyncio.shield(inference)
+                except asyncio.CancelledError:
+                    # Python cannot cancel the model's native thread. Keep its lock
+                    # and input file alive until it really exits.
+                    await asyncio.gather(inference, return_exceptions=True)
+                    raise
         finally:
             self.inference_waiters -= 1
+
+    async def prepare_model(self):
+        self.model_state = "loading"
+        try:
+            async with self.inference_lock:
+                await asyncio.to_thread(self.get_asr().prepare)
+            self.model_state = "ready"
+        except Exception as exc:
+            self.model_state = "failed"
+            logger.warning("Model warmup failed (%s)", type(exc).__name__)
 
     def get_connector(self):
         if self.connector is None:
@@ -82,6 +104,8 @@ class Worker:
     async def start(self):
         self.db.recover()
         self.running = True
+        if self.settings.asr_preload:
+            self.warmup_task = asyncio.create_task(self.prepare_model())
         self.task = asyncio.create_task(self.run())
 
     async def close(self):
@@ -91,6 +115,8 @@ class Worker:
             await asyncio.gather(self.task, return_exceptions=True)
         if self.audio_tasks:
             await asyncio.gather(*self.audio_tasks.values(), return_exceptions=True)
+        if self.warmup_task:
+            await asyncio.gather(self.warmup_task, return_exceptions=True)
         if self.connector:
             await self.connector.aclose()
 
@@ -157,6 +183,15 @@ class Worker:
             if meeting["stop_requested"] and meeting["status"] != "queued":
                 meeting["status"] = "stopping"
             if meeting["status"] == "queued":
+                if self.settings.asr_preload:
+                    if self.model_state in {"not_loaded", "loading"}:
+                        return
+                    if self.model_state == "failed":
+                        self.db.update(
+                            meeting_id, status="failed",
+                            error="Local ASR warmup failed. Check model files, dependencies and memory; no bot was joined.",
+                        )
+                        return
                 if not self.db.claim(meeting_id, "joining"):
                     return
                 handle = await connector.join(
@@ -200,7 +235,11 @@ class Worker:
                     )
                     verified = snapshot.get("status")
                     if verified in {"completed", "failed", "cancelled"}:
-                        self.db.update(meeting_id, status="completed", error=None)
+                        self.db.update(
+                            meeting_id,
+                            status="failed" if verified == "failed" else "completed",
+                            error=snapshot.get("error") if verified == "failed" else None,
+                        )
                     elif verified == "needs_review":
                         self.db.update(
                             meeting_id,
@@ -264,7 +303,12 @@ class Worker:
         except Exception as exc:
             logger.warning("Teams connector error for job %s (%s)", meeting_id, type(exc).__name__)
             # Never blindly retry a possibly successful external join or stop.
-            if meeting["status"] in {"queued", "joining", "stopping"}:
+            if meeting["status"] == "stopping" and getattr(exc, "retryable", False):
+                self.db.update(
+                    meeting_id,
+                    error="Stop is still being verified; the local gateway is temporarily unavailable. Polling will continue.",
+                )
+            elif meeting["status"] in {"queued", "joining", "stopping"}:
                 self.db.update(
                     meeting_id,
                     status="needs_review",

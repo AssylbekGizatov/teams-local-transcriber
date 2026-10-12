@@ -11,6 +11,8 @@ fi
 TMP="$(mktemp -d)"
 trap 'rm -rf -- "$TMP"' EXIT
 git -C "$TMP" init -q
+git -C "$TMP" config core.autocrlf false
+git -C "$TMP" config core.eol lf
 git -C "$TMP" remote add origin https://github.com/Vexa-ai/vexa.git
 git -C "$TMP" fetch --depth 1 origin "$REV"
 test "$(git -C "$TMP" rev-parse FETCH_HEAD)" = "$REV"

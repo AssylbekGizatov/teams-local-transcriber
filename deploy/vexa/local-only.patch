@@ -32,6 +32,66 @@ index 82ec846..4b834dc 100644
  ];
  
  /** The canonical join launch args, as a fresh mutable array per call. Includes
+diff --git a/core/meetings/modules/join/src/msteams/join.ts b/core/meetings/modules/join/src/msteams/join.ts
+index 78cb86c..b3f7abb 100644
+--- a/core/meetings/modules/join/src/msteams/join.ts
++++ b/core/meetings/modules/join/src/msteams/join.ts
+@@ -214,15 +214,20 @@ export async function joinMicrosoftTeams(
+ 
+   log("Step 4: Trying to set display name...");
+   try {
+-    const nameInput = page.locator(teamsNameInputSelectors.join(', ')).first();
++    const nameInput = page.locator(teamsNameInputSelectors.map(selector => `${selector}:visible`).join(', ')).first();
+     await nameInput.waitFor({ timeout: 5000 });
+     await nameInput.fill(botName);
++    await nameInput.press('Tab');
++    const nameValidity = await nameInput.evaluate(input => ({maxLength: (input as HTMLInputElement).maxLength, length: (input as HTMLInputElement).value.length, valid: (input as HTMLInputElement).validity.valid, validationMessage: (input as HTMLInputElement).validationMessage}));
++    log(`[Teams Join] Name validation: ${JSON.stringify(nameValidity)}`);
+     log(`✅ Display name set to "${botName}"`);
+   } catch (error) {
+     log("ℹ️ Display name input not found, continuing...");
+   }
+ 
+   log("Step 5: Ensuring Computer audio is selected...");
++  const audioControls = await page.locator('[data-tid="speaker-toggle"], [data-tid="microphone-toggle"]').evaluateAll(elements => elements.map(e => ({tid:e.getAttribute('data-tid'),pressed:e.getAttribute('aria-pressed'),checked:e.getAttribute('aria-checked'),label:e.getAttribute('aria-label'),title:e.getAttribute('title')}))).catch(() => []);
++  log(`[Teams Join] Pre-join audio controls: ${JSON.stringify(audioControls)}`);
+   try {
+     const computerAudioRadio = page.locator(teamsComputerAudioRadioSelectors.join(', ')).first();
+     const dontUseAudioRadio = page.locator(teamsDontUseAudioRadioSelectors.join(', ')).first();
+@@ -282,7 +287,7 @@ export async function joinMicrosoftTeams(
+   log("Step 6: Clicking 'Join now' to enter the meeting...");
+   try {
+     // Use the more specific "Join now" selector first to avoid ambiguity
+-    const joinNowButton = page.locator('button:has-text("Join now")').first();
++    const joinNowButton = page.locator('button:has-text("Join now"):visible').first();
+     const joinNowVisible = await joinNowButton.isVisible().catch(() => false);
+ 
+     if (joinNowVisible) {
+@@ -290,7 +295,7 @@ export async function joinMicrosoftTeams(
+       log("✅ Clicked 'Join now' button");
+     } else {
+       // Fall back to generic join selectors
+-      const fallbackJoinButton = page.locator(teamsJoinButtonSelectors.join(', ')).first();
++      const fallbackJoinButton = page.locator(teamsJoinButtonSelectors.map(selector => `${selector}:visible`).join(', ')).first();
+       await fallbackJoinButton.waitFor({ timeout: 10000 });
+       await fallbackJoinButton.click();
+       log("✅ Clicked join button (fallback selector)");
+@@ -298,7 +303,14 @@ export async function joinMicrosoftTeams(
+     // Brief wait for Teams to start processing the join request
+     await page.waitForTimeout(1000);
+   } catch (error) {
+-    log("⚠️ Join button not found — bot may not be able to enter the meeting");
++    const controls = await page.locator('button').evaluateAll(buttons => buttons
++      .filter(button => (button as HTMLElement).offsetWidth > 0 && (button as HTMLElement).offsetHeight > 0)
++      .map(button => ({text: (button.textContent || '').trim().slice(0, 120), label: button.getAttribute('aria-label'), disabled: (button as HTMLButtonElement).disabled, id: button.id, tid: button.getAttribute('data-tid')}))).catch(() => []);
++    log(`[Teams Join] Pre-join control diagnostic: ${JSON.stringify(controls)}`);
++    const validation = await page.locator('[role="alert"], [data-tid*="error"], [aria-live="assertive"]').allTextContents().catch(() => []);
++    log(`[Teams Join] Pre-join validation messages: ${JSON.stringify(validation)}`);
++    log(`[Teams Join] Click failed: ${String((error as Error)?.message || error).slice(0, 1600)}`);
++    throw new Error('Teams join button could not be activated; no lobby entry confirmed.');
+   }
+ 
+   // Step 6c: Handle the post-"Join now" AV-confirmation modal (Vexa-ai/vexa#467).
 diff --git a/core/meetings/modules/mixed-pipeline/src/chunked-transcriber.ts b/core/meetings/modules/mixed-pipeline/src/chunked-transcriber.ts
 index 737438f..d31dafb 100644
 --- a/core/meetings/modules/mixed-pipeline/src/chunked-transcriber.ts
@@ -190,7 +250,7 @@ index 545ca1d..663193c 100644
    const page = pages.length > 0 ? pages[0] : await context.newPage();
    return { context: context as BrowserContext, page: page as Page };
 diff --git a/core/meetings/services/bot/src/capture-bridge.ts b/core/meetings/services/bot/src/capture-bridge.ts
-index 86ce7c9..8392bcd 100644
+index 86ce7c9..7f1f36d 100644
 --- a/core/meetings/services/bot/src/capture-bridge.ts
 +++ b/core/meetings/services/bot/src/capture-bridge.ts
 @@ -647,10 +647,12 @@ export async function launchBrowser(inv: Invocation): Promise<BrowserSession> {
@@ -208,7 +268,89 @@ index 86ce7c9..8392bcd 100644
    });
  
    return {
-@@ -1229,7 +1231,7 @@ export async function startCaptureBridge(
+@@ -769,6 +771,16 @@ export async function startCaptureBridge(
+     console.log(`[bot] hint-counters bridge-crossed=${hintsBridgeCrossed()} pipeline-received=${c?.received ?? 0} binder-matched=${c?.matched ?? 0} binder-missed=${c?.missed ?? 0} teams-captions=${captionsBridgeCrossed()} csrc-crossed=${csrcBridgeCrossed()} observations=${obsBridgeCrossed()}`);
+   }, 30_000) : null;
+   countersTimer?.unref?.();   // observability only — never holds the process open
++  const captureHealthTimer = setInterval(() => {
++    void page.evaluate(() => {
++      const w = globalThis as any;
++      return {bundle: !!w.VexaBrowserUtils, hook: !!w.__vexaRemoteAudioHookInstalled,
++        streams: (w.__vexaCapturedRemoteAudioStreams || []).map((s: any) => s.getAudioTracks().map((t: any) => ({state: t.readyState, enabled: t.enabled, muted: t.muted}))),
++        context: w.__vexaMixCtx?.state ?? null, mixedCapture: !!w.__vexaMixedCapture,
++        frames: w.__vexaMixFrames || 0, energeticMs: w.__vexaMixEnergeticMs || 0};
++    }).then((health) => console.log('[bot] capture-health ' + JSON.stringify(health))).catch(() => {});
++  }, 10000);
++  captureHealthTimer.unref();
+ 
+   await page.exposeFunction('__vexaPerSpeakerAudioData', onPerSpeakerAudio).catch((e: Error) => {
+     if (!String(e.message).includes('already registered')) throw e;
+@@ -796,7 +808,7 @@ export async function startCaptureBridge(
+   // ── Start the page-side capture (VexaBrowserUtils preferred; production inline fallback). ──
+   // The body of this callback runs IN THE BROWSER (Playwright serializes it); DOM globals are
+   // reached via globalThis (this file type-checks against the Node lib — no DOM types here).
+-  await page.evaluate(async ({ isMixed, isPerTrack, isJitsi, isTeams, isZoom, botName, mainAudioGraceMs, mainAudioSilenceMs, mainAudioEnergyRms }) => {
++  await page.evaluate(async ({ isMixed, isPerTrack, isJitsi, isTeams, isZoom, isLocalCtc, botName, mainAudioGraceMs, mainAudioSilenceMs, mainAudioEnergyRms }) => {
+     const w = (globalThis as any) as Record<string, any>;
+     if (isMixed) {
+       // Zoom/Teams/Jitsi ride the WebRTC hook (installRemoteAudioHook, installed pre-nav), which mirrors
+@@ -1014,7 +1026,8 @@ export async function startCaptureBridge(
+       };
+       const setupMix = (): void => {
+         reportStreamPresence();
+-        let streams = (w.__vexaCapturedRemoteAudioStreams || []) as Array<any>;
++        let streams = ((w.__vexaCapturedRemoteAudioStreams || []) as Array<any>)
++          .filter(s => s?.getAudioTracks?.().some((track: any) => track.readyState === 'live'));
+         if (isTeams && streams.length) {
+           // selectTeamsMixStreams (bundled via VexaBrowserUtils) prefers the server mix and FAILS OPEN
+           // if it never appears — see its doc for why an unconditional preference is the more
+@@ -1085,13 +1098,29 @@ export async function startCaptureBridge(
+           w.__vexaMixCtx.resume?.();
+           w.__vexaMixDest = w.__vexaMixCtx.createMediaStreamDestination();
+           w.__vexaMixSeen = new Set();
++          w.__vexaMixSources = new Map();
+         }
++        const selectedKeys = new Set(streams.map((s: any) => s.getAudioTracks()
++          .filter((track: any) => track.readyState === 'live')
++          .map((track: any) => track.id).sort().join('|')));
++        for (const [key, entry] of w.__vexaMixSources) {
++          if (selectedKeys.has(key)) continue;
++          try { entry.node.disconnect(); } catch { /* already disconnected */ }
++          w.__vexaMixSources.delete(key);
++          w.__vexaMixSeen.delete(key);
++        }
++        w.__vexaMixStreamRefs = Array.from(w.__vexaMixSources.values(), (entry: any) => entry.stream);
+         for (const s of streams) {
+-          if (!s || w.__vexaMixSeen.has(s.id)) continue;
++          const liveTracks = s.getAudioTracks().filter((track: any) => track.readyState === 'live');
++          const trackKey = liveTracks.map((track: any) => track.id).sort().join('|');
++          if (!trackKey || w.__vexaMixSeen.has(trackKey)) continue;
+           try {
+-            w.__vexaMixCtx.createMediaStreamSource(s).connect(w.__vexaMixDest);
+-            w.__vexaMixSeen.add(s.id);
+-            (w.__vexaMixStreamRefs = w.__vexaMixStreamRefs || []).push(s);
++            const liveStream = new (globalThis as any).MediaStream(liveTracks);
++            const node = w.__vexaMixCtx.createMediaStreamSource(liveStream);
++            node.connect(w.__vexaMixDest);
++            w.__vexaMixSources.set(trackKey, {node, stream: liveStream});
++            w.__vexaMixSeen.add(trackKey);
++            w.__vexaMixStreamRefs.push(liveStream);
+             w.logBot?.('[mixed] connected remote stream ' + w.__vexaMixSeen.size);
+             reportTopology();
+           } catch { /* a stream may not be connectable yet */ }
+@@ -1119,7 +1148,10 @@ export async function startCaptureBridge(
+             // speaker-hint binder align frames to hints; without it ~3/4 of hints missed → misattribution.
+             w.__vexaPerSpeakerAudioData(0, Array.from(pcm), tsMs);
+           };
+-          Promise.resolve(w.VexaBrowserUtils.createMixedAudioCapture(w.__vexaMixDest.stream, meterAndForward))
++          // Local CTC needs the original PCM timeline, including quiet speech and
++          // pauses. Disable the upstream peak gate and redundant speaker replay.
++          Promise.resolve(w.VexaBrowserUtils.createMixedAudioCapture(w.__vexaMixDest.stream, meterAndForward,
++            isLocalCtc ? {silenceThreshold: -1, replay: false} : {}))
+             .then((cap: any) => {
+               w.__vexaMixedCapture = cap;
+               // THE CLOCK STARTS WHEN CAPTURE STARTS, NOT WHEN AUDIO ARRIVES.
+@@ -1229,7 +1261,7 @@ export async function startCaptureBridge(
          // it is best-effort — an init throw is caught, logged ONCE, and the bot carries on exactly
          // as it does today. The one thing the first live meeting must answer is whether the 0.10
          // selectors still match, which is why captions-found / captions-absent are logged.
@@ -217,7 +359,16 @@ index 86ce7c9..8392bcd 100644
            try {
              w.__vexaTeamsCaptions = w.VexaBrowserUtils.createTeamsCaptions({
                selfName: botName,
-@@ -1304,7 +1306,7 @@ export async function startCaptureBridge(
+@@ -1292,7 +1324,7 @@ export async function startCaptureBridge(
+       await w.__vexaGmeetCapture.start();
+       await w.__vexaRemoteAudioReady?.();
+     }
+-  }, { isMixed: mixed, isPerTrack: perTrack, isJitsi: jitsi, isTeams: inv.platform === 'teams', isZoom: inv.platform === 'zoom', botName: inv.botName,
++  }, { isMixed: mixed, isPerTrack: perTrack, isJitsi: jitsi, isTeams: inv.platform === 'teams', isZoom: inv.platform === 'zoom', isLocalCtc: inv.platform === 'teams' && inv.transcriptionModel === 'local', botName: inv.botName,
+       // How long the Teams lane waits for the server mix before capturing every track instead.
+       mainAudioGraceMs: Number(process.env.VEXA_TEAMS_MAIN_AUDIO_GRACE_MS || 15000),
+       // How long a PICKED mix may stay wholly silent before the lane abandons it for every track.
+@@ -1304,7 +1336,7 @@ export async function startCaptureBridge(
    // Captions are OFF by default now: the bot does not touch the meeting's UI to get a name source
    // it was measured not to need (see TEAMS_ENABLE_CAPTIONS). Opt back in with
    // VEXA_TEAMS_ENABLE_CAPTIONS=1; the reader still consumes captions a meeting already has on.
@@ -226,6 +377,14 @@ index 86ce7c9..8392bcd 100644
      void runTeamsCaptionEnable(page, undefined, undefined, undefined, onObservation)
        .catch(() => { /* the helper already swallows + observes */ });
    }
+@@ -1312,6 +1344,7 @@ export async function startCaptureBridge(
+   // Stop fn: tear the page-side capture down on teardown (best-effort; the page may be closing).
+   return async () => {
+     if (countersTimer) clearInterval(countersTimer);
++    clearInterval(captureHealthTimer);
+     activity?.unavailable();
+     await page.evaluate(() => {
+       const w = (globalThis as any) as Record<string, any>;
 diff --git a/core/meetings/services/bot/src/config.ts b/core/meetings/services/bot/src/config.ts
 index 33432c5..21b1c1f 100644
 --- a/core/meetings/services/bot/src/config.ts
@@ -275,6 +434,108 @@ index 13d2ae7..f2270d8 100644
        ? createCaptureSignalRecorder(inv)
        : null;
    if (signalRecorder) console.log(`[bot] capture-signal recording → ${signalRecorder.path}`);
+diff --git a/core/meetings/services/bot/src/local-gigaam-pipeline.ts b/core/meetings/services/bot/src/local-gigaam-pipeline.ts
+new file mode 100644
+index 0000000..5add09c
+--- /dev/null
++++ b/core/meetings/services/bot/src/local-gigaam-pipeline.ts
+@@ -0,0 +1,68 @@
++import type { BotPipeline, Transcribe } from './pipeline.js';
++import type { TranscriptSink } from './ports.js';
++
++/** Local CTC: submit each PCM window once; no Whisper agreement or speaker inference. */
++export function createLocalGigaamPipeline(transcribe: Transcribe, sink: TranscriptSink, onError?: (error: unknown) => void): BotPipeline {
++  const rate = 16000, windowSamples = rate * 20, maxQueued = 4;
++  let parts: Float32Array[] = [], count = 0, startMs = 0, sequence = 0, queued = 0, closed = false;
++  let tail: Promise<void> = Promise.resolve();
++  let lastVoiceAt = 0;
++  let previousEndMs = 0, overloaded = false;
++  const report = onError ?? ((error: unknown) => console.error('[local-gigaam] ' + String(error)));
++  const reportOverload = () => {
++    if (!overloaded) report(new Error('Local GigaAM cannot keep up; bounded queue reached and audio was dropped.'));
++    overloaded = true;
++  };
++  const flush = () => {
++    if (!count) return;
++    const pcm = new Float32Array(count);
++    let offset = 0;
++    for (const part of parts) { pcm.set(part, offset); offset += part.length; }
++    const begin = startMs, end = begin + pcm.length / rate * 1000, id = `local-gigaam-${++sequence}`;
++    parts = []; count = 0;
++    queued++;
++    tail = tail.then(async () => {
++      try {
++        const result = await transcribe(pcm);
++        if (result.text.trim()) await sink.publish({segment_id: id, speaker: '', speaker_key: 'local-mix', text: result.text.trim(), start: begin / 1000, end: end / 1000, completed: true, language: result.language, absolute_start_time: new Date(begin).toISOString(), absolute_end_time: new Date(end).toISOString(), source: 'merged'});
++      } catch (error) { report(error); }
++      finally { queued--; }
++    });
++  };
++  const timer = setInterval(() => { if (count && Date.now() - lastVoiceAt >= 1200) flush(); }, 300);
++  timer.unref();
++  return {
++    async start() {},
++    async stop() { closed = true; clearInterval(timer); flush(); await tail; },
++    feedAudio() {},
++    feedMixedAudio(pcm, tsMs) {
++      if (closed || !pcm.length) return;
++      if (!Number.isFinite(tsMs)) { report(new Error('Local GigaAM received an invalid PCM timestamp.')); return; }
++      // A browser suspension/reconnect must not compress missing seconds into
++      // a continuous phrase. Publish the earlier audio as its own segment.
++      if (count && tsMs > previousEndMs + 500) flush();
++      previousEndMs = tsMs + pcm.length / rate * 1000;
++      let energy = 0;
++      for (const value of pcm) energy += value * value;
++      const voiced = Math.sqrt(energy / pcm.length) > 0.0001;
++      if (voiced) lastVoiceAt = Date.now();
++      if (!count && !voiced) return;
++      if (queued >= maxQueued) { reportOverload(); return; }
++      overloaded = false;
++      let offset = 0;
++      while (offset < pcm.length) {
++        if (!count && !voiced) break;
++        if (queued >= maxQueued) { reportOverload(); break; }
++        if (!count) startMs = tsMs + offset / rate * 1000;
++        const size = Math.min(windowSamples - count, pcm.length - offset);
++        parts.push(pcm.slice(offset, offset + size)); count += size; offset += size;
++        if (count === windowSamples) flush();
++      }
++    },
++    recordHint() {},
++    recordTransportEvent() {},
++    recordCaptionName() {},
++    recordRosterName() {},
++    recordRosterCoverage() {},
++  };
++}
+diff --git a/core/meetings/services/bot/src/pipeline.ts b/core/meetings/services/bot/src/pipeline.ts
+index c3ecfd9..71b8030 100644
+--- a/core/meetings/services/bot/src/pipeline.ts
++++ b/core/meetings/services/bot/src/pipeline.ts
+@@ -41,6 +41,7 @@ import { TranscriptionClient, type TranscriptionResult } from '@vexa/transcribe-
+ import { isMixedLanePlatform, isPerTrackLanePlatform, type Invocation, type Platform } from './config.js';
+ import type { TranscriptSegment } from './contracts.js';
+ import type { Pipeline, TranscriptSink } from './ports.js';
++import { createLocalGigaamPipeline } from './local-gigaam-pipeline.js';
+ 
+ /** stt.v1 round-trip — real adapter = TranscriptionClient.transcribe; L2/L3 = a mock. The
+  *  lane bakes language/prompt at the call site, so the closure carries the configured language. */
+@@ -422,6 +423,7 @@ export function createTranscribe(inv: Invocation): Transcribe {
+     serviceUrl: inv.transcriptionServiceUrl,
+     apiToken: inv.transcriptionServiceToken,
+     model: inv.transcriptionModel ?? undefined,
++    requestTimeoutMs: 120000,
+   });
+   const language = inv.language ?? undefined;
+   return (pcm, prompt) => client.transcribe(pcm, language, prompt);
+@@ -460,6 +462,7 @@ export function createBotPipeline(
+ ): BotPipeline {
+   const transcribe = opts.transcribe ?? createTranscribe(inv);
+   if (inv.platform === 'teams') {
++    if (inv.transcriptionModel === 'local') return createLocalGigaamPipeline(transcribe, sink, opts.onError);
+     return createTeamsBotPipeline(
+       transcribe, sink, opts.onError, opts.createTeamsTranscriber, opts.onObservation, inv.botName,
+     );
 diff --git a/core/meetings/services/bot/warm-hf-cache.mjs b/core/meetings/services/bot/warm-hf-cache.mjs
 index 7d6423f..037d1fb 100644
 --- a/core/meetings/services/bot/warm-hf-cache.mjs
