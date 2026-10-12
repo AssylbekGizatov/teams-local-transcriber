@@ -32,3 +32,11 @@ def test_bundle_includes_notebooks_and_excludes_private_data():
     assert '.env.example' in paths
     assert '.env' not in paths
     assert not any(p.startswith(('models/', 'data/', '.git/', '.venv/', 'vendor/')) for p in paths)
+
+
+def test_docker_wrapper_uses_explicit_array_binding():
+    text = (ROOT / 'easy-start/launcher.ps1').read_text()
+    assert 'ValueFromRemainingArguments' not in text
+    for line in text.splitlines():
+        if 'Invoke-Docker ' in line and not line.startswith('function '):
+            assert 'Invoke-Docker -Arguments ' in line

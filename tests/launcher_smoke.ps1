@@ -12,7 +12,7 @@ function Assert-Throws([scriptblock]$Block, $Pattern) {
     throw "Expected failure: $Pattern"
 }
 function Invoke-Docker {
-    param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Arguments)
+    param([string[]]$Arguments)
     $script:Calls.Add(($Arguments -join ' '))
     if ($Arguments[0] -eq 'context') { return 'npipe:////./pipe/docker_engine' }
     if ($Arguments[0] -eq 'info') { return 'linux' }
@@ -25,6 +25,8 @@ function Start-Process { $script:Opened = $true }
 function Read-Host { return $script:Answer }
 function Set-Clipboard { throw 'Clipboard should not be used after cancellation.' }
 try {
+    Assert-True ((Invoke-Docker -Arguments @('context','inspect')) -eq 'npipe:////./pipe/docker_engine') 'Mock Docker context dispatch failed.'
+    Assert-True ((Invoke-Docker -Arguments @('info')) -eq 'linux') 'Mock Docker info dispatch failed.'
     $null = New-Item -ItemType Directory -Path $Root
     Copy-Item "$OriginalRoot/.env.example" "$Root/.env.example"
     $token1 = New-Token

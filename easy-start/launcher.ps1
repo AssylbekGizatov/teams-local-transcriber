@@ -5,7 +5,7 @@ $Image = 'teams-asr-platform:local'
 $Url = 'http://127.0.0.1:8000'
 
 function Invoke-Docker {
-    param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Arguments)
+    param([string[]]$Arguments)
     & docker @Arguments
     if ($LASTEXITCODE -ne 0) { throw 'Docker operation failed. Ask IT to check Docker and the approved deployment.' }
 }
@@ -23,11 +23,11 @@ function Test-Docker {
         throw 'Docker is not installed. This launcher installs nothing. Ask IT for a prepared host or the service URL.'
     }
     if ($env:DOCKER_HOST -and $env:DOCKER_HOST -notmatch '^(npipe|unix)://') { throw 'Remote Docker hosts are not supported by easy start. Ask IT for the service URL.' }
-    $context = @(Invoke-Docker @('context','inspect','--format','{{.Endpoints.docker.Host}}')) -join ''
+    $context = @(Invoke-Docker -Arguments @('context','inspect','--format','{{.Endpoints.docker.Host}}')) -join ''
     if ($context.Trim() -notmatch '^(npipe|unix)://') { throw 'Select an approved local Docker context with IT. This launcher does not change contexts.' }
-    $os = @(Invoke-Docker @('info','--format','{{.OSType}}')) -join ''
+    $os = @(Invoke-Docker -Arguments @('info','--format','{{.OSType}}')) -join ''
     if ($os.Trim() -ne 'linux') { throw 'A running, IT-approved Linux Docker engine is required.' }
-    $null = Invoke-Docker @('compose','version')
+    $null = Invoke-Docker -Arguments @('compose','version')
     Write-Host '[OK] Docker engine and Compose v2 are available.'
 }
 function Get-Compose {
@@ -40,7 +40,7 @@ function Get-Compose {
         foreach ($key in @('TEAMS_AUTHORIZATION_REFERENCE','TEAMS_ALLOWED_MEETING_IDS','VEXA_API_KEY')) {
             if (-not $Settings[$key]) { throw "Teams setup is incomplete: $key. Ask IT; Teams will not be enabled automatically." }
         }
-        $null = Invoke-Docker @('network','inspect','teams-asr-vexa','--format','{{.Name}}')
+        $null = Invoke-Docker -Arguments @('network','inspect','teams-asr-vexa','--format','{{.Name}}')
         $arguments += @('-f',(Join-Path $Root 'deploy/compose.teams.yaml'))
         Write-Host '[INFO] IT-configured Teams integration selected. This does not verify a live Teams join.'
     }
@@ -53,7 +53,7 @@ function Test-Prepared {
     }
     if ($Settings['APP_API_TOKEN'] -eq $Settings['ASR_API_TOKEN']) { throw 'Operator and ASR tokens must differ.' }
     if ($Settings['ASR_BACKEND'] -ne 'gigaam') { throw 'Easy start supports the bundled GigaAM CPU configuration only.' }
-    $null = Invoke-Docker @('image','inspect',$Image,'--format','{{.Id}}')
+    $null = Invoke-Docker -Arguments @('image','inspect',$Image,'--format','{{.Id}}')
     Write-Host '[OK] Prepared local service image exists. Nothing will be pulled or built during Start.'
     $manifest = Get-Content -Raw (Join-Path $PSScriptRoot 'model-checksums.json') | ConvertFrom-Json
     foreach ($item in $manifest.PSObject.Properties) {
@@ -96,8 +96,8 @@ function Initialize-Service {
         Write-Host '[OK] Created .env. Keep it private; do not upload or email it.'
     }
     $null = New-Item -ItemType Directory -Force -Path (Join-Path $Root 'models/gigaam')
-    Invoke-Docker @('build','-t',$Image,$Root)
-    Invoke-Docker @('run','--rm','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges:true','--mount',('type=bind,source=' + (Join-Path $Root 'models') + ',target=/models'),$Image,'python','scripts/download_models.py','--output','/models/gigaam')
+    Invoke-Docker -Arguments @('build','-t',$Image,$Root)
+    Invoke-Docker -Arguments @('run','--rm','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges:true','--mount',('type=bind,source=' + (Join-Path $Root 'models') + ',target=/models'),$Image,'python','scripts/download_models.py','--output','/models/gigaam')
     Write-Host '[OK] Preparation finished. Run CHECK.cmd, then START.cmd. Teams remains separately configured by IT.'
 }
 function Invoke-Launcher {
@@ -119,13 +119,13 @@ function Invoke-Launcher {
         if ((Read-Host 'Type STOP after checking active sessions (including needs_review)') -cne 'STOP') { return }
         # Shutdown must remain possible when Teams configuration/network is damaged.
         $compose = @('compose','--project-directory',$Root,'-f',(Join-Path $Root 'compose.yaml'),'--profile','cpu')
-        Invoke-Docker ($compose + @('stop','platform'))
+        Invoke-Docker -Arguments ($compose + @('stop','platform'))
         Write-Host '[OK] Platform stopped. Data volume and model files retained.'
         return
     }
     $compose = @(Get-Compose $settings)
     Test-Prepared $settings
-    $containers = @(Invoke-Docker ($compose + @('ps','--all','--format','json')))
+    $containers = @(Invoke-Docker -Arguments ($compose + @('ps','--all','--format','json')))
     # Refuse to interfere with a separately running GPU deployment on the same port/queue.
     foreach ($line in $containers) {
         if (-not $line.Trim()) { continue }
@@ -140,7 +140,7 @@ function Invoke-Launcher {
         return
     }
     # No build/pull: a restricted host never downloads dependencies implicitly.
-    Invoke-Docker ($compose + @('up','-d','--no-build','--pull','never','platform'))
+    Invoke-Docker -Arguments ($compose + @('up','-d','--no-build','--pull','never','platform'))
     Write-Host 'Waiting for the authenticated dashboard (up to 90 seconds)...'
     $ready = $false
     for ($attempt = 0; $attempt -lt 30; $attempt++) {
