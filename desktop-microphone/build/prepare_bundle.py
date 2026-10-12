@@ -16,6 +16,16 @@ CODE_REVISION = "7447938d791c4f3e643386ee22c33777004293a5"
 SAMPLE_URL = "https://cdn.chatwm.opensmodel.sberdevices.ru/GigaAM/example.wav"
 SAMPLE_SHA256 = "d8aaaa18a5098d7c6de0595ae7ac1e64cacd0d4022af3595213bdaf23be77e69"
 
+# The pinned Windows SentencePiece wheel omits all license files. Preserve the
+# exact matching upstream license plus every vendored third-party license.
+SENTENCEPIECE_LICENSES = {
+    "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "third_party/absl/LICENSE": "d3e2f59e1d71176dfdb555ece6a41f7a5aa0f52ff21211010ace314f57695f6b",
+    "third_party/darts_clone/LICENSE": "155f59997298ee336602c49f9c1110f268ac394ca2197eb02647a3555935ad52",
+    "third_party/esaxx/LICENSE": "7c28553d1d3312d65fe309f76a22ebaf33a3d76c8c1e3b98a88ee4654ecb53db",
+    "third_party/protobuf-lite/LICENSE": "6e5e117324afd944dcf67f36cf329843bc1a92229a8cd9bb573d7a83130fea7d",
+}
+
 
 def digest(path):
     result = hashlib.sha256()
@@ -71,6 +81,15 @@ def collect_licenses(bundle):
         if name.lower().replace("_", "-") == "antlr4-python3-runtime" and not notices:
             item = fetch("https://raw.githubusercontent.com/antlr/antlr4/4.9.3/LICENSE.txt", destination / "LICENSE.txt")
             notices.append(item)
+        if name.lower().replace("_", "-") == "sentencepiece":
+            if dist.version != "0.2.1":
+                raise RuntimeError("Review SentencePiece notice pins before changing its version")
+            for relative, expected in SENTENCEPIECE_LICENSES.items():
+                target = destination / (relative.replace("/", "-") + ".txt")
+                item = fetch("https://raw.githubusercontent.com/google/sentencepiece/v0.2.1/" + relative,
+                             target, expected, limit=100_000)
+                item["file"] = str(target.relative_to(bundle))
+                notices.append(item)
         if not notices:
             raise RuntimeError(f"No full license text found for {name}; do not publish an incomplete bundle")
         packages.append({"name": name, "version": dist.version, "license_expression": dist.metadata.get("License-Expression"),
@@ -96,6 +115,13 @@ def main():
         raise RuntimeError("Python distribution LICENSE.txt is missing")
     shutil.copy2(python_license, notices / "Python-LICENSE.txt")
     acquired = []
+    microsoft = fetch(
+        "https://visualstudio.microsoft.com/wp-content/uploads/2021/09/Visual-C-Runtime-2015-2022-License-1.docx",
+        notices / "Microsoft-VC-Runtime-2015-2022-License.docx",
+        "f1e3d56ceb2ad68aae0711b910375009e651ac5530fa0760f0dea6e81e54fae1",
+        limit=1_000_000)
+    microsoft["source_page"] = "https://visualstudio.microsoft.com/license-terms/vs2022-cruntime/"
+    acquired.append(microsoft)
     acquired.append(fetch(
         "https://huggingface.co/ai-sage/GigaAM-Multilingual/resolve/2f8a57144e6ec3adfd32fe0484d9ea9913305bc8/README.md",
         notices / "GigaAM-model-card.md"))
@@ -132,7 +158,9 @@ def main():
         "PortAudio-binary-README.md. Tcl/Tk and Python PSF license texts are included separately.\n"
         "PyInstaller's license includes its bootloader exception. Torch/NumPy/ONNX native third-party\n"
         "notices are preserved from their wheels. Microsoft VC runtime files are supplied with Python/\n"
-        "PyTorch; see their notices and https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution .\n",
+        "PyTorch; the full Microsoft terms are in Microsoft-VC-Runtime-2015-2022-License.docx.\n"
+        "See also https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution .\n"
+        "The application license does not replace third-party terms; this bundle is not entirely MIT-licensed.\n",
         encoding="utf-8")
     info = {"python": sys.version, "python_source": "https://www.python.org/ftp/python/3.12.10/Python-3.12.10.tgz",
             "python_distribution": "actions/setup-python 3.12.10 x64; exact installed runtime files hashed in file-manifest.json",
