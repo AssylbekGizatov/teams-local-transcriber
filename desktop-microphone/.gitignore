@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.venv/
+dist/
+work/
+models/
+*.zip
+*.wav
+*.bin

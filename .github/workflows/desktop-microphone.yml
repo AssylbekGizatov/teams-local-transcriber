@@ -1,0 +1,124 @@
+name: Portable Windows microphone
+on:
+  push:
+    paths:
+      - 'desktop-microphone/**'
+      - '.github/workflows/desktop-microphone.yml'
+      - 'scripts/download_models.py'
+      - 'app/asr.py'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Optional explicit release tag (e.g. microphone-v1.0.0); blank builds only'
+        required: false
+        default: ''
+        type: string
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.10'
+          architecture: x64
+      - name: Create isolated pinned build environment
+        run: |
+          python -m venv .desktop-build-venv
+          New-Item -ItemType Directory -Force build-out/provenance | Out-Null
+          $py = '.desktop-build-venv/Scripts/python.exe'
+          & $py -m pip install --report build-out/provenance/pip.json pip==25.2
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & $py -m pip install --no-deps --report build-out/provenance/build-tools.json -r desktop-microphone/requirements-build.txt
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & $py -m pip install --no-deps --report build-out/provenance/torch.json --index-url https://download.pytorch.org/whl/cpu torch==2.10.0+cpu torchaudio==2.10.0+cpu
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & $py -m pip install --no-deps --no-build-isolation --report build-out/provenance/runtime.json -r desktop-microphone/requirements-runtime.txt
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & $py -m pip install --no-deps --no-build-isolation --report build-out/provenance/gigaam.json 'gigaam @ git+https://github.com/salute-developers/GigaAM.git@7447938d791c4f3e643386ee22c33777004293a5'
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & $py -m pip check
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & $py -m pip freeze --all | Out-File build-out/provenance/installed.txt -Encoding utf8
+      - name: Apply auditable unused audio-backend lazy import
+        run: |
+          & .desktop-build-venv/Scripts/python.exe desktop-microphone/build/patch_gigaam.py --output build-out/provenance
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Run desktop contract tests
+        run: |
+          & .desktop-build-venv/Scripts/python.exe -m unittest discover -s desktop-microphone/tests -v
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Freeze standalone Windows GUI
+        run: |
+          & .desktop-build-venv/Scripts/python.exe -m PyInstaller --noconfirm --clean --distpath build-out/dist --workpath build-out/freeze desktop-microphone/GigaAM-Microphone.spec
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Bundle verified model and redistributable notices
+        run: |
+          $py = '.desktop-build-venv/Scripts/python.exe'
+          & $py scripts/download_models.py --backend gigaam --output build-out/dist/GigaAM-Microphone/models/gigaam
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & $py desktop-microphone/build/prepare_bundle.py --bundle build-out/dist/GigaAM-Microphone --reports build-out/provenance
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Audit DLLs and create portable ZIP
+        run: |
+          & .desktop-build-venv/Scripts/python.exe desktop-microphone/build/package.py --bundle build-out/dist/GigaAM-Microphone --output build-out
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Test extracted EXE with isolated PATH and real inference
+        run: |
+          & .desktop-build-venv/Scripts/python.exe desktop-microphone/build/smoke.py --zip build-out/GigaAM-Microphone-windows-x64.zip --output build-out
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Upload tested portable package
+        uses: actions/upload-artifact@v4
+        with:
+          name: GigaAM-Microphone-windows-x64
+          compression-level: 0
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            build-out/GigaAM-Microphone-windows-x64.zip
+            build-out/GigaAM-Microphone-windows-x64.zip.sha256
+            build-out/test-report.json
+            build-out/dll-audit.json
+      - name: Upload build diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: microphone-build-diagnostics
+          retention-days: 7
+          path: |
+            build-out/provenance/
+            build-out/freeze/**/*.txt
+            build-out/test-report.json
+            build-out/dll-audit.json
+            build-out/smoke-results/
+  release:
+    if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: GigaAM-Microphone-windows-x64
+          path: portable
+      - name: Publish explicitly requested tested release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          SOURCE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^microphone-v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] || { echo 'Use microphone-vMAJOR.MINOR.PATCH'; exit 1; }
+          cd portable
+          sha256sum --check GigaAM-Microphone-windows-x64.zip.sha256
+          test "$(stat -c %s GigaAM-Microphone-windows-x64.zip)" -lt 2147483648
+          gh release create "$RELEASE_TAG" --target "$SOURCE_SHA" --title "GigaAM Microphone $RELEASE_TAG" --notes 'Portable Windows x64 CPU app. Extract the entire ZIP, then open GigaAM-Microphone.exe. Python, pip, Docker and model downloads are not required on the destination. Windows PATH-isolated EXE inference and GUI self-tests passed; this is not a clean-machine or physical microphone certification. The app is unsigned; follow your organization policy and do not disable security controls.' GigaAM-Microphone-windows-x64.zip GigaAM-Microphone-windows-x64.zip.sha256 test-report.json dll-audit.json
