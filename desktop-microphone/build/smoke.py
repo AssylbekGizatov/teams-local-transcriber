@@ -15,6 +15,19 @@ EXPECTED_TEXT = "ничьих не требуя похвал счастлив у
 FIXTURE_SHA256 = "d8aaaa18a5098d7c6de0595ae7ac1e64cacd0d4022af3595213bdaf23be77e69"
 
 
+def isolated_environment(source, cache):
+    """Windows environment names are case-insensitive; a plain dict is not."""
+    env = {name.upper(): value for name, value in source.items()}
+    system_root = env.get("SYSTEMROOT") or env.get("WINDIR")
+    if not system_root:
+        raise RuntimeError("Windows SystemRoot/WINDIR is unavailable; cannot isolate the test PATH")
+    for name in ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV", "CONDA_PREFIX", "CONDA_DEFAULT_ENV", "TCL_LIBRARY", "TK_LIBRARY", "SD_ENABLE_ASIO"):
+        env.pop(name, None)
+    env.update(PATH=str(Path(system_root) / "System32"), HF_HOME=str(cache / "hf"),
+               TORCH_HOME=str(cache / "torch"), XDG_CACHE_HOME=str(cache), PYTHONNOUSERSITE="1")
+    return env
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--zip", type=Path, required=True)
@@ -40,11 +53,7 @@ def main():
             cwd.mkdir()
             cache = root / "Empty user cache"
             cache.mkdir()
-            env = os.environ.copy()
-            for name in ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV", "CONDA_PREFIX", "CONDA_DEFAULT_ENV", "TCL_LIBRARY", "TK_LIBRARY", "SD_ENABLE_ASIO"):
-                env.pop(name, None)
-            env.update(PATH=str(Path(env["SystemRoot"]) / "System32"), HF_HOME=str(cache / "hf"),
-                       TORCH_HOME=str(cache / "torch"), XDG_CACHE_HOME=str(cache), PYTHONNOUSERSITE="1")
+            env = isolated_environment(os.environ, cache)
             for label, extra in (("gui-and-native-imports", ["--self-test"]),
                                  ("real-cpu-inference", ["--input-wav", str(fixture)])):
                 result_path = results / f"{label}.json"
