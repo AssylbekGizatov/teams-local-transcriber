@@ -6,7 +6,7 @@ This report distinguishes executed checks from configuration, simulations and un
 
 ### Assembled application, lightweight suite
 
-- `python -m pytest -q`: **92 passed, 2 skipped** in the base application environment. The two skips are opt-in neural/model/API tests, executed separately below.
+- `python -m pytest -q`: **94 passed, 2 skipped** in the base application environment. The two skips are opt-in neural/model/API tests, executed separately below.
 - Includes authentication before request-body consumption, distinct operator/inference credentials, upload/format/size/consent controls, real FFmpeg decoding, durable SQLite claims/recovery, queue bounds, optimistic transcript edits, safe filename handling, Unicode exports, meeting gate/URL checks, known/unknown session stop states, stop-during-join race, authoritative snapshot replacement and preservation of operator edits.
 - Most connector/model contract tests use explicit fakes/HTTP mock transports. They do not demonstrate actual Teams joining or meeting quality.
 - Independent review re-ran the suite and verified unauthorized/chunked oversized requests fail without stored files.
@@ -27,6 +27,8 @@ Actual official GigaAM Multilingual 220M CTC weights were downloaded and verifie
 - Dedicated ASR suite with provisioned model/sample: **33 passed**, including both opt-in real checks. See [ASR.md](ASR.md) for reproduction and model caveats.
 
 ### Teams adapter and patched upstream source
+
+CI found and prompted a reproducibility correction after the first publication: running `git apply` inside `vendor/vexa` under an enclosing Git checkout silently skipped all patch paths. The unchanged SHA256 verifier correctly rejected the untouched source. The vendor script now applies the reviewed patch to the index of its own isolated temporary Git checkout, then exports that patched tree. Two offline regression cases execute the actual script inside/outside a parent Git checkout (including a path with spaces). Both pass, and a fresh fetch of the actual pinned Vexa source into a nested destination passes all 15 hardened-file checks. No privacy hash, patch or verification assertion was weakened.
 
 - Connector suite: **33 passed**, including source verification when the pinned vendor snapshot is present.
 - Official Vexa revision `f1a62fbbdfd2c98cb162582d82c31fe8102acc89` fetched successfully. Mandatory local privacy patch applied; changed-file SHA256 manifest verified.

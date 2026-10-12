@@ -14,10 +14,15 @@ git -C "$TMP" init -q
 git -C "$TMP" remote add origin https://github.com/Vexa-ai/vexa.git
 git -C "$TMP" fetch --depth 1 origin "$REV"
 test "$(git -C "$TMP" rev-parse FETCH_HEAD)" = "$REV"
+# Apply in this isolated repository, never in DEST. If DEST is a subdirectory
+# of the application's Git checkout, `git apply` there can silently skip every
+# path as outside its prefix while still exiting successfully.
+git -C "$TMP" checkout --detach --quiet "$REV"
+git -C "$TMP" apply --index --check "$ROOT/deploy/vexa/local-only.patch"
+git -C "$TMP" apply --index "$ROOT/deploy/vexa/local-only.patch"
+PATCHED_TREE="$(git -C "$TMP" write-tree)"
 mkdir -p "$DEST"
-git -C "$TMP" archive FETCH_HEAD | tar -x -C "$DEST"
-git -C "$DEST" apply --check "$ROOT/deploy/vexa/local-only.patch"
-git -C "$DEST" apply "$ROOT/deploy/vexa/local-only.patch"
+git -C "$TMP" archive "$PATCHED_TREE" | tar -x -C "$DEST"
 mkdir -p "$DEST/.local-build"
 cp "$ROOT/deploy/vexa/Dockerfile.bot" "$DEST/.local-build/Dockerfile.bot"
 printf '%s\n' "$REV" > "$DEST/.local-build/UPSTREAM_REVISION"
