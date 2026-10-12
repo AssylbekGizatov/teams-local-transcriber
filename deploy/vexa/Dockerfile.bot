@@ -22,7 +22,7 @@ RUN test -s core/meetings/services/bot/dist/index.js && test -s core/meetings/se
 
 FROM mcr.microsoft.com/playwright:v1.56.0-noble AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends xvfb fluxbox pulseaudio xdotool xclip ca-certificates && rm -rf /var/lib/apt/lists/*
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 VEXA_HF_CACHE=/opt/hf-cache VEXA_HF_OFFLINE=1 HF_HUB_OFFLINE=1 VEXA_CAPTURE_SIGNAL=0 VEXA_TEAMS_ENABLE_CAPTIONS=0 BOT_MAX_ACTIVE_MS=7200000
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 VEXA_HF_CACHE=/opt/hf-cache VEXA_HF_OFFLINE=1 HF_HUB_OFFLINE=1 VEXA_CAPTURE_SIGNAL=0 VEXA_TEAMS_ENABLE_CAPTIONS=0 BOT_MAX_ACTIVE_MS=7200000 VEXA_BROWSER_UTILS_PATH=/app/core/meetings/services/bot/dist/browser-utils.global.js BOT_SIGTERM_GRACE_MS=510000
 WORKDIR /app
 COPY --from=builder /build /app
 COPY --from=builder /opt/hf-cache /opt/hf-cache

@@ -2,10 +2,14 @@
 # docker compose -f compose.yaml -f deploy/compose.teams.yaml --profile cpu up -d
 services:
   platform:
+    environment:
+      ASR_PRELOAD: "true"
     networks:
       vexa:
         aliases: [asr-app]
   platform-gpu:
+    environment:
+      ASR_PRELOAD: "true"
     networks:
       vexa:
         aliases: [asr-app]

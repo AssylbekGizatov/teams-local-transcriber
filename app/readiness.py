@@ -61,6 +61,7 @@ def service_readiness(settings: Settings, worker) -> dict:
             "missing_files": missing,
             "checksum_verification": "not_checked",
             "inference_verification": "not_tested",
+            "warmup": worker.model_state,
         },
         "dependencies": {
             "status": "discoverable" if not missing_dependencies else "missing",

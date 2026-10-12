@@ -75,11 +75,14 @@ def test_vendor_applies_patch_before_export_even_under_parent_git(tmp_path, pare
         "os.execv(os.environ['REAL_GIT'], [os.environ['REAL_GIT'], *args])\n"
     )
     shim.chmod(0o755)
+    global_git_config = tmp_path / "windows-git-config"
+    global_git_config.write_text("[core]\n\tautocrlf = true\n")
     env = {
         **os.environ,
         "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
         "REAL_GIT": shutil.which("git"),
         "FIXTURE_UPSTREAM": upstream.as_uri(),
+        "GIT_CONFIG_GLOBAL": str(global_git_config),
     }
     destination = project / "vendor/vexa"
     completed = subprocess.run(

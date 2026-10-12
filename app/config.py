@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     asr_device: str = "cpu"
     asr_compute_type: str = "int8"
     asr_chunk_seconds: float = Field(default=20.0, ge=2, le=25)
+    asr_preload: bool = False
+    asr_cpu_threads: int = Field(default=4, ge=1, le=128)
     max_upload_mb: int = Field(default=500, ge=1, le=4096)
     max_audio_seconds: int = Field(default=14400, ge=1, le=86400)
     max_inference_queue: int = Field(default=4, ge=1, le=64)

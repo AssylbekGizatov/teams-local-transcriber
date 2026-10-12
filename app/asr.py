@@ -345,6 +345,19 @@ class LocalASR:
             self._backend = backend(self.settings)
         return self._backend
 
+    def prepare(self) -> None:
+        """Verify/load weights and exercise inference before accepting live audio."""
+        with self._lock:
+            backend = self._get_backend()
+            with tempfile.TemporaryDirectory(prefix="asr-warmup-", dir=self.settings.temp_root) as temp:
+                sample = Path(temp) / "silence.wav"
+                with wave.open(str(sample), "wb") as audio:
+                    audio.setnchannels(1)
+                    audio.setsampwidth(2)
+                    audio.setframerate(SAMPLE_RATE)
+                    audio.writeframes(b"\0\0" * SAMPLE_RATE)
+                backend.transcribe_chunk(sample, None)
+
     def transcribe(self, path: Path, language: str | None = None) -> list[dict[str, Any]]:
         if language == "auto":
             language = None

@@ -113,6 +113,8 @@
       return "Ожидает обработки";
     if (meeting.source === "teams" && meeting.status === "queued")
       return "Ожидает подключения";
+    if (meeting.source === "teams" && meeting.status === "recording")
+      return "Бот во встрече";
     return STATUS[meeting.status] || "Неизвестный статус";
   }
   function errorMessage(data, fallback) {
@@ -198,6 +200,13 @@
       value.worker.status === "running"
         ? "Обработчик очереди запущен."
         : "Обработчик очереди не запущен. Проверьте WORKER_ENABLED и перезапустите сервис.",
+      value.model.warmup === "ready"
+        ? "GigaAM прогрет: модель загружена, пробный расчёт выполнен."
+        : value.model.warmup === "loading"
+          ? "Модель загружается и прогревается. Подключение новых ботов пока ожидает."
+          : value.model.warmup === "failed"
+            ? "Прогрев модели завершился ошибкой. Проверьте журнал сервера."
+            : "Модель загрузится при первом распознавании.",
       value.teams.status === "disabled"
         ? "Teams отключён. Для подключения нужны разрешение организации и настройки коннектора."
         : value.teams.status === "configured_unverified"
