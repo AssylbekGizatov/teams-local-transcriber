@@ -14,6 +14,18 @@ spec.loader.exec_module(app)
 
 
 class EntryPointTests(unittest.TestCase):
+    def test_diagnostic_error_preserves_stack_without_locals(self):
+        try:
+            private_audio = "do not serialize locals"
+            raise AttributeError("missing test API")
+        except AttributeError as error:
+            result = app.diagnostic_error(error)
+        self.assertIn("AttributeError: missing test API", result["traceback"])
+        self.assertIn("test_diagnostic_error_preserves_stack_without_locals", result["traceback"])
+        self.assertNotIn(private_audio, result["traceback"])
+        self.assertEqual(result["stage"], "entrypoint")
+        self.assertIn("platform", result)
+
     def test_network_guard_blocks_connections_and_server(self):
         script = '''
 import app, socket

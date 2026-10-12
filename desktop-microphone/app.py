@@ -8,8 +8,16 @@ from pathlib import Path
 import socket
 import sys
 import time
+import traceback
 import wave
 
+
+DIAGNOSTIC_STAGE = "entrypoint"
+
+def diagnostic_error(error):
+    return {"status": "failed", "error_type": type(error).__name__, "error": str(error),
+            "stage": DIAGNOSTIC_STAGE, "traceback": traceback.format_exc(),
+            "platform": sys.platform, "os_name": os.name, "frozen": bool(getattr(sys, "frozen", False))}
 
 def disable_network():
     """Defense in depth, in this process only; no Windows settings are changed."""
@@ -42,16 +50,25 @@ def read_wav(path):
 
 
 def self_test():
+    global DIAGNOSTIC_STAGE
+    DIAGNOSTIC_STAGE = "import numpy"
     import numpy
+    DIAGNOSTIC_STAGE = "import sounddevice"
     import sounddevice
+    DIAGNOSTIC_STAGE = "import torch"
     import torch
+    DIAGNOSTIC_STAGE = "import torchaudio"
     import torchaudio
+    DIAGNOSTIC_STAGE = "import gigaam"
     from gigaam.model import GigaAMASR
     import gigaam.encoder, gigaam.decoder, gigaam.decoding, gigaam.preprocess
     from engine import verify_model, bundle_root
     from gui import self_test as gui_test
+    DIAGNOSTIC_STAGE = "verify bundled model"
     verify_model(bundle_root() / "models" / "gigaam")
+    DIAGNOSTIC_STAGE = "Tk GUI lifecycle"
     result = gui_test()
+    DIAGNOSTIC_STAGE = "runtime isolation assertions"
     if torch.version.cuda is not None:
         raise AssertionError("Portable package must use CPU-only PyTorch")
     if getattr(sys, "frozen", False):
@@ -68,6 +85,7 @@ def self_test():
 
 
 def main():
+    global DIAGNOSTIC_STAGE
     # PyInstaller needs writable streams even in windowed mode for third-party
     # diagnostic handlers. We deliberately discard rather than store speech logs.
     for name in ("stdout", "stderr"):
@@ -84,6 +102,7 @@ def main():
         if args.self_test:
             result = self_test()
         elif args.input_wav:
+            DIAGNOSTIC_STAGE = "real CPU inference"
             from engine import Transcriber, MODEL_REVISION
             started = time.monotonic()
             samples, rate = read_wav(args.input_wav)
@@ -100,7 +119,7 @@ def main():
         return 0
     except Exception as error:
         if args.self_test or args.input_wav:
-            result = {"status": "failed", "error_type": type(error).__name__, "error": str(error)}
+            result = diagnostic_error(error)
             if args.output_json:
                 args.output_json.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
             print(str(error), file=sys.stderr)
